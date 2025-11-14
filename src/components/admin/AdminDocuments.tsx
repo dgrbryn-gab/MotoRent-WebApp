@@ -69,15 +69,55 @@ export function AdminDocuments({ adminUser }: AdminDocumentsProps) {
       setLoading(true);
       const data = await documentService.getAllDocuments();
       
-      // Generate signed URLs for all documents
-      if (data && data.length > 0) {
+      // Also get users with driver licenses from users table (mobile uploads)
+      const { data: usersWithLicenses } = await userService.getUsersWithDriverLicenses();
+      
+      // Combine both sources
+      let allDocuments: any[] = data || [];
+      
+      // Add driver licenses from users table if they don't already exist in document_verifications
+      if (usersWithLicenses && usersWithLicenses.length > 0) {
+        for (const user of usersWithLicenses) {
+          // Check if this user already has a driver license in document_verifications
+          const existingDoc = allDocuments.find(
+            d => d.user_id === user.id && d.document_type === 'driver-license'
+          );
+          
+          // If not, add it as a pending document
+          if (!existingDoc && user.driver_license_url) {
+            allDocuments.push({
+              id: `user-${user.id}`, // Temporary ID
+              user_id: user.id,
+              document_type: 'driver-license',
+              document_url: user.driver_license_url,
+              status: 'pending', // Consider mobile uploads as pending for review
+              submitted_at: user.updated_at || new Date().toISOString(),
+              user: {
+                name: user.name,
+                email: user.email
+              }
+            });
+          }
+        }
+      }
+      
+      // Generate signed URLs or public URLs for all documents
+      if (allDocuments && allDocuments.length > 0) {
         const documentsWithUrls = await Promise.all(
-          data.map(async (doc: any) => {
+          allDocuments.map(async (doc: any) => {
             try {
-              const signedUrl = await documentService.getSignedUrl(doc.document_url, 3600);
+              let signedUrl = '';
+              // Try getting signed URL first (for documents bucket)
+              try {
+                signedUrl = await documentService.getSignedUrl(doc.document_url, 3600);
+              } catch (signError) {
+                // If signed URL fails, try public URL (some files might be public)
+                console.log('Trying public URL for:', doc.document_url);
+                signedUrl = documentService.getPublicUrl(doc.document_url);
+              }
               return { ...doc, signedUrl };
             } catch (error) {
-              console.error('Failed to get signed URL for:', doc.document_url, error);
+              console.error('Failed to get URL for:', doc.document_url, error);
               return { ...doc, signedUrl: '' };
             }
           })

@@ -54,6 +54,7 @@ import { motorcycleService } from '../../services/motorcycleService';
 import { transactionService } from '../../services/transactionService';
 import { notificationService } from '../../services/notificationService';
 import { documentService } from '../../services/documentService';
+import { userService } from '../../services/userService';
 import { createPaymentIntent } from '../../services/paymentService';
 import { transformReservations } from '../../utils/supabaseHelpers';
 
@@ -175,7 +176,15 @@ export function AdminReservations({}: AdminReservationsProps) {
     // Load user's latest documents (one of each type)
     if (reservation.userId) {
       try {
+        console.log('Loading documents for user:', reservation.userId);
+        
+        // Get documents from document_verifications table
         const docs = await documentService.getUserDocuments(reservation.userId);
+        console.log('Documents from document_verifications:', docs);
+        
+        // Also get user profile to check for driver_license_url (mobile uploads)
+        const userProfile = await userService.getUserById(reservation.userId);
+        console.log('User profile:', userProfile);
         
         // Get only the latest document of each type
         const latestDocs: any[] = [];
@@ -192,18 +201,54 @@ export function AdminReservations({}: AdminReservationsProps) {
           }
         });
         
-        // Get signed URLs for each document
+        // If no driver license found in document_verifications, check user profile
+        if (!latestDocs.find(d => d.document_type === 'driver-license') && userProfile?.driver_license_url) {
+          console.log('Found driver license in user profile:', userProfile.driver_license_url);
+          latestDocs.push({
+            id: `user-${userProfile.id}`,
+            user_id: userProfile.id,
+            document_type: 'driver-license',
+            document_url: userProfile.driver_license_url,
+            status: 'pending',
+            submitted_at: userProfile.updated_at || new Date().toISOString()
+          });
+        }
+        
+        console.log('All documents to display:', latestDocs);
+        
+        // Get signed URLs or public URLs for each document
         const docsWithUrls = await Promise.all(
           latestDocs.map(async (doc: any) => {
             try {
-              const signedUrl = await documentService.getSignedUrl(doc.document_url, 3600);
+              console.log('Getting URL for:', doc.document_url);
+              let signedUrl = '';
+              
+              // Check if it's a full URL already (mobile might store full URLs)
+              if (doc.document_url.startsWith('http://') || doc.document_url.startsWith('https://')) {
+                console.log('Document URL is already a full URL:', doc.document_url);
+                signedUrl = doc.document_url;
+              } else {
+                // Try getting signed URL
+                try {
+                  signedUrl = await documentService.getSignedUrl(doc.document_url, 3600);
+                  console.log('Got signed URL:', signedUrl);
+                } catch (signError) {
+                  console.error('Signed URL failed:', signError);
+                  // If signed URL fails, try public URL
+                  signedUrl = documentService.getPublicUrl(doc.document_url);
+                  console.log('Using public URL:', signedUrl);
+                }
+              }
+              
               return { ...doc, signedUrl };
             } catch (error) {
-              console.error('Failed to get signed URL:', error);
+              console.error('Failed to get URL for document:', doc.document_url, error);
               return { ...doc, signedUrl: '' };
             }
           })
         );
+        
+        console.log('Documents with URLs:', docsWithUrls);
         setUserDocuments(docsWithUrls);
       } catch (error) {
         console.error('Failed to load documents:', error);

@@ -27,6 +27,10 @@ export function OTPVerification({ email, onVerified, onBack, navigate }: OTPVeri
   // Start countdown for resend button
   useEffect(() => {
     setCountdown(60); // 60 seconds countdown
+    // Auto-focus first input on mount
+    setTimeout(() => {
+      inputRefs.current[0]?.focus();
+    }, 100);
   }, []);
 
   useEffect(() => {
@@ -40,31 +44,85 @@ export function OTPVerification({ email, onVerified, onBack, navigate }: OTPVeri
     // Only allow digits
     if (!/^\d*$/.test(value)) return;
     
-    // Limit to single digit
-    const newValue = value.slice(-1);
+    // Handle multiple characters (for paste or auto-fill)
+    const digits = value.replace(/\D/g, '');
     
-    const newOtp = [...otp];
-    newOtp[index] = newValue;
-    setOtp(newOtp);
-
-    // Auto-focus next input
-    if (newValue && index < 5) {
-      inputRefs.current[index + 1]?.focus();
+    if (digits.length === 0) {
+      // Clear current field
+      const newOtp = [...otp];
+      newOtp[index] = '';
+      setOtp(newOtp);
+      return;
     }
+    
+    if (digits.length === 1) {
+      // Single digit - update and move to next
+      const newOtp = [...otp];
+      newOtp[index] = digits;
+      setOtp(newOtp);
 
-    // Auto-verify when all 6 digits entered
-    if (index === 5 && newValue && newOtp.every(digit => digit !== '')) {
-      handleVerifyOtp(newOtp.join(''));
+      // Auto-focus next input if available
+      if (index < 5) {
+        setTimeout(() => {
+          inputRefs.current[index + 1]?.focus();
+        }, 10);
+      }
+
+      // Auto-verify when all 6 digits entered
+      if (index === 5 && newOtp.every(digit => digit !== '')) {
+        setTimeout(() => {
+          handleVerifyOtp(newOtp.join(''));
+        }, 100);
+      }
+    } else {
+      // Multiple digits (paste) - distribute across fields
+      const newOtp = [...otp];
+      for (let i = 0; i < digits.length && index + i < 6; i++) {
+        newOtp[index + i] = digits[i];
+      }
+      setOtp(newOtp);
+      
+      // Focus the next empty field or last field
+      const nextEmptyIndex = newOtp.findIndex((d, i) => i > index && d === '');
+      if (nextEmptyIndex !== -1) {
+        setTimeout(() => {
+          inputRefs.current[nextEmptyIndex]?.focus();
+        }, 10);
+      } else {
+        setTimeout(() => {
+          inputRefs.current[5]?.focus();
+        }, 10);
+      }
+      
+      // Auto-verify if all filled
+      if (newOtp.every(digit => digit !== '')) {
+        setTimeout(() => {
+          handleVerifyOtp(newOtp.join(''));
+        }, 100);
+      }
     }
   };
 
   const handleKeyDown = (index: number, e: React.KeyboardEvent) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      // Focus previous input on backspace
-      inputRefs.current[index - 1]?.focus();
+    if (e.key === 'Backspace') {
+      e.preventDefault();
+      if (otp[index]) {
+        // Clear current field
+        const newOtp = [...otp];
+        newOtp[index] = '';
+        setOtp(newOtp);
+      } else if (index > 0) {
+        // Move to previous field and clear it
+        const newOtp = [...otp];
+        newOtp[index - 1] = '';
+        setOtp(newOtp);
+        inputRefs.current[index - 1]?.focus();
+      }
     } else if (e.key === 'ArrowLeft' && index > 0) {
+      e.preventDefault();
       inputRefs.current[index - 1]?.focus();
     } else if (e.key === 'ArrowRight' && index < 5) {
+      e.preventDefault();
       inputRefs.current[index + 1]?.focus();
     }
   };
@@ -191,10 +249,10 @@ export function OTPVerification({ email, onVerified, onBack, navigate }: OTPVeri
 
         {/* OTP Input */}
         <div className="space-y-4">
-          <Label className="text-center block">Enter verification code</Label>
+          <Label className="text-center block text-foreground">Enter verification code</Label>
           <div className="flex justify-center gap-2">
             {otp.map((digit, index) => (
-              <Input
+              <input
                 key={index}
                 ref={(el) => { inputRefs.current[index] = el; }}
                 type="text"
@@ -204,8 +262,13 @@ export function OTPVerification({ email, onVerified, onBack, navigate }: OTPVeri
                 onChange={(e) => handleOtpChange(index, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(index, e)}
                 onPaste={handlePaste}
-                className="w-12 h-12 text-center text-lg font-bold bg-white text-foreground border-2 border-input focus:border-primary focus:ring-2 focus:ring-primary/20"
+                className="w-12 h-12 text-center text-xl font-bold bg-white text-gray-900 border-2 border-gray-300 rounded-md focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
                 disabled={isVerifying}
+                autoComplete="off"
+                style={{ 
+                  WebkitAppearance: 'none',
+                  MozAppearance: 'textfield'
+                }}
               />
             ))}
           </div>

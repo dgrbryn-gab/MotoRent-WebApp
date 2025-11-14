@@ -123,5 +123,16 @@ export const userService = {
 
     if (error) throw error;
     return !!data;
+  },
+
+  // Get users with driver licenses (for admin document verification)
+  async getUsersWithDriverLicenses() {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, name, email, driver_license_url, license_number, updated_at')
+      .not('driver_license_url', 'is', null);
+
+    if (error) throw error;
+    return { data, error: null };
   }
 };
