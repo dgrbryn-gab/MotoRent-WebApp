@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test Notification Creation</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <h1>Test Notification Creation</h1>
+  <button id="testBtn">Create Test Notification</button>
+  <pre id="output"></pre>
+
+  <script>
+    const supabaseUrl = 'https://hceylmoutuzldbywawtm.supabase.co';
+    const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhjZXlsbW91dHV6bGRieXdhd3RtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA5NTEwNzQsImV4cCI6MjA3NjUyNzA3NH0.z5gAl_zSesZ_jgk6-JEz1S_fHtakPL9yqw_xubtJqgU';
+    
+    const supabase = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+    const output = document.getElementById('output');
+
+    // First, check the table structure
+    async function checkTableStructure() {
+      output.textContent = 'Checking notifications table structure...\n\n';
+      
+      const { data, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .limit(1);
+      
+      if (error) {
+        output.textContent += `❌ Error reading table: ${JSON.stringify(error, null, 2)}\n\n`;
+      } else {
+        output.textContent += `✅ Table exists. Sample data: ${JSON.stringify(data, null, 2)}\n\n`;
+      }
+    }
+
+    document.getElementById('testBtn').addEventListener('click', async () => {
+      try {
+        output.textContent = 'Checking authentication...\n\n';
+        
+        // Check if user is logged in
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          output.textContent += '❌ Not authenticated! Please log in to your app first.\n\n';
+          output.textContent += 'Steps:\n';
+          output.textContent += '1. Open your MotoRent app\n';
+          output.textContent += '2. Log in as a customer\n';
+          output.textContent += '3. Come back to this test page and try again\n';
+          return;
+        }
+        
+        output.textContent += `✅ Authenticated as: ${session.user.email}\n`;
+        output.textContent += `User ID: ${session.user.id}\n\n`;
+        
+        output.textContent += 'Creating test notification...\n\n';
+        
+        // Try to create a notification for the logged-in user
+        const { data, error } = await supabase
+          .from('notifications')
+          .insert({
+            user_id: session.user.id, // Use the actual logged-in user's ID
+            title: 'Test Notification',
+            message: 'This is a test notification',
+            type: 'success',
+            reservation_id: null,
+            motorcycle_name: null,
+            read: false,
+            timestamp: new Date().toISOString()
+          })
+          .select()
+          .single();
+        
+        if (error) {
+          output.textContent += `❌ ERROR:\n${JSON.stringify(error, null, 2)}\n\n`;
+        } else {
+          output.textContent += `✅ SUCCESS! Notification created:\n${JSON.stringify(data, null, 2)}\n\n`;
+          output.textContent += '\n🎉 Now check the notification bell icon in your app!';
+        }
+      } catch (err) {
+        output.textContent += `❌ EXCEPTION: ${err.message}\n${err.stack}`;
+      }
+    });
+
+    // Check structure on load
+    checkTableStructure();
+  </script>
+</body>
+</html>
