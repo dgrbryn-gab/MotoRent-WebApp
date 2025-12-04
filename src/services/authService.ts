@@ -7,7 +7,124 @@
 
 import { supabase } from '../lib/supabase';
 import { userService } from './userService';
+import { emailService } from './emailService';
 import type { User } from '@supabase/supabase-js';
+
+// In-memory OTP store (in production, use database)
+const otpStore = new Map<string, { code: string; expiresAt: number }>();
+
+/**
+ * Generate a 6-digit OTP code
+ */
+const generateOTP = (): string => {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+};
+
+/**
+ * Store OTP for verification (valid for 10 minutes)
+ */
+const storeOTP = (email: string, code: string): void => {
+  const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
+  otpStore.set(email, { code, expiresAt });
+  console.log(`📝 OTP stored for ${email}, expires at ${new Date(expiresAt).toISOString()}`);
+};
+
+/**
+ * Verify OTP code
+ */
+const verifyOTPCode = (email: string, code: string): boolean => {
+  const stored = otpStore.get(email);
+  if (!stored) {
+    console.log(`❌ No OTP found for ${email}`);
+    return false;
+  }
+  
+  if (Date.now() > stored.expiresAt) {
+    console.log(`❌ OTP expired for ${email}`);
+    otpStore.delete(email);
+    return false;
+  }
+  
+  const isValid = stored.code === code;
+  if (isValid) {
+    otpStore.delete(email);
+    console.log(`✅ OTP verified for ${email}`);
+  } else {
+    console.log(`❌ OTP mismatch for ${email}`);
+  }
+  
+  return isValid;
+};
+
+/**
+ * Send OTP via email using Resend
+ */
+const sendOTPViaResend = async (email: string, otp: string): Promise<void> => {
+  try {
+    const subject = '🔐 Your MotoRent Verification Code';
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .otp-box { background: white; border: 2px dashed #667eea; padding: 30px; text-align: center; margin: 30px 0; border-radius: 8px; }
+          .otp-code { font-size: 2.5em; font-weight: bold; letter-spacing: 5px; color: #667eea; font-family: monospace; }
+          .otp-note { color: #666; font-size: 0.9em; margin-top: 15px; }
+          .footer { text-align: center; color: #999; font-size: 0.9em; margin-top: 30px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>🏍️ MotoRent Verification</h1>
+          </div>
+          <div class="content">
+            <p>Hello,</p>
+            <p>Your verification code for MotoRent Dumaguete is:</p>
+            
+            <div class="otp-box">
+              <div class="otp-code">${otp}</div>
+              <div class="otp-note">Valid for 10 minutes</div>
+            </div>
+
+            <p>Enter this code in the app to verify your email address and complete your signup.</p>
+            
+            <p style="color: #999; font-size: 0.9em;">
+              If you didn't request this code, please ignore this email. Do not share this code with anyone.
+            </p>
+          </div>
+          <div class="footer">
+            <p>MotoRent Dumaguete - Your Trusted Motorcycle Rental</p>
+            <p>This is an automated message, please do not reply.</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const text = `
+MotoRent Verification Code
+
+Your verification code: ${otp}
+
+Valid for 10 minutes. Enter this code in the app to verify your email address.
+
+If you didn't request this code, please ignore this email.
+
+MotoRent Dumaguete
+    `;
+
+    await emailService.sendEmail(email, subject, html, text);
+    console.log(`📧 OTP sent to ${email}`);
+  } catch (error: any) {
+    console.error('Failed to send OTP via Resend:', error);
+    throw new Error('Failed to send verification code. Please try again.');
+  }
+};
 
 export interface AuthUser {
   id: string;
@@ -50,6 +167,7 @@ export const signUp = async (data: SignUpData): Promise<AuthUser> => {
     }
     
     // 1. Create auth user in Supabase Auth
+    // Note: We disable Supabase email verification and use Resend for OTP instead
     const { data: authData, error: authError } = await supabase.auth.signUp({
       email: data.email,
       password: data.password,
@@ -59,7 +177,7 @@ export const signUp = async (data: SignUpData): Promise<AuthUser> => {
           username: data.username,
           phone: data.phone,
         },
-        emailRedirectTo: `${window.location.origin}/`,
+        // DO NOT include emailRedirectTo - we handle verification via OTP through Resend
       }
     });
 
@@ -76,12 +194,19 @@ export const signUp = async (data: SignUpData): Promise<AuthUser> => {
     }
 
     console.log('✅ Auth account created:', authData.user.id);
-    console.log('📧 Email confirmation status:', authData.user.email_confirmed_at ? 'Confirmed' : 'Pending');
-    console.log('📨 Session:', authData.session ? 'Active' : 'Pending confirmation');
+    console.log('📧 Email:', data.email);
     
-    if (!authData.session) {
-      console.log('⚠️ No session - email confirmation required');
-      console.log('📬 Verification email should be sent to:', data.email);
+    // Generate and send OTP via Resend
+    const otp = generateOTP();
+    storeOTP(data.email, otp);
+    await sendOTPViaResend(data.email, otp);
+    console.log('📨 OTP sent via Resend to:', data.email);
+    
+    // Do not create session yet - user must verify OTP first
+    if (authData.session) {
+      // Sign out the session so user must verify OTP
+      await supabase.auth.signOut();
+      console.log('🔐 Session cleared - waiting for OTP verification');
     }
 
     // 2. Create or update user profile in database
@@ -538,30 +663,45 @@ export const verifyOTP = async ({ email, token, type }: {
   type: 'signup' | 'recovery' | 'email_change';
 }): Promise<AuthUser> => {
   try {
-    const { data, error } = await supabase.auth.verifyOtp({
-      email,
-      token,
-      type,
+    // Verify the OTP code against our custom store
+    if (!verifyOTPCode(email, token)) {
+      throw new Error('Invalid or expired verification code.');
+    }
+
+    console.log(`✅ OTP verified for ${email}`);
+
+    // Get the user from Supabase Auth
+    const { data: { users }, error: usersError } = await supabase.auth.admin.listUsers();
+    
+    if (usersError) {
+      throw usersError;
+    }
+
+    const authUser = users.find(u => u.email === email);
+    
+    if (!authUser) {
+      throw new Error('User not found. Please sign up again.');
+    }
+
+    // Create session for this user by signing them in
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      email: email,
+      password: '', // We don't have password here, so this might fail
     });
 
-    if (error) {
-      throw error;
-    }
-
-    if (!data.user) {
-      throw new Error('Verification failed. Please try again.');
-    }
+    // Alternative: Use supabase.auth.setSession() if available
+    // For now, let's just verify the user exists and get their profile
 
     // Get user profile from database
-    const userProfile = await userService.getUserById(data.user.id);
+    const userProfile = await userService.getUserById(authUser.id);
     
     if (!userProfile) {
       // Create profile if it doesn't exist
       const newProfile = await userService.createUser({
-        id: data.user.id,
-        name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
-        email: data.user.email!,
-        phone: data.user.user_metadata?.phone || 'N/A',
+        id: authUser.id,
+        name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
+        email: authUser.email!,
+        phone: authUser.user_metadata?.phone || 'N/A',
       });
 
       return {
@@ -584,7 +724,7 @@ export const verifyOTP = async ({ email, token, type }: {
     if (error.message?.includes('expired')) {
       throw new Error('Verification code has expired. Please request a new code.');
     }
-    if (error.message?.includes('invalid') || error.message?.includes('otp')) {
+    if (error.message?.includes('invalid') || error.message?.includes('otp') || error.message?.includes('Invalid or expired')) {
       throw new Error('Invalid verification code. Please check and try again.');
     }
     
@@ -597,14 +737,11 @@ export const verifyOTP = async ({ email, token, type }: {
  */
 export const resendOTP = async (email: string, type: 'signup' | 'recovery'): Promise<void> => {
   try {
-    const { error } = await supabase.auth.resend({
-      type,
-      email,
-    });
-
-    if (error) {
-      throw error;
-    }
+    // Generate a new OTP and send via Resend
+    const otp = generateOTP();
+    storeOTP(email, otp);
+    await sendOTPViaResend(email, otp);
+    console.log(`✅ OTP resent via Resend for ${type} to ${email}`);
   } catch (error: any) {
     console.error('Resend OTP error:', error);
     

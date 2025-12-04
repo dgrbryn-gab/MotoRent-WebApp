@@ -4,12 +4,12 @@ import { supabase } from '../lib/supabase';
 // You'll need to set these environment variables:
 // VITE_EMAIL_SERVICE: 'resend' | 'sendgrid' | 'supabase'
 // VITE_EMAIL_API_KEY: Your API key
-// VITE_EMAIL_FROM: Your sender email (e.g., noreply@motorent.com)
+// VITE_EMAIL_FROM: Your sender email (e.g., otp@yourdomain.com for Resend with custom domain)
 
-const EMAIL_SERVICE = (import.meta as any).env?.VITE_EMAIL_SERVICE || 'console'; // default to console for dev
+const EMAIL_SERVICE = (import.meta as any).env?.VITE_EMAIL_SERVICE || 'resend'; // default to Resend for OTP
 const EMAIL_API_KEY = (import.meta as any).env?.VITE_EMAIL_API_KEY || '';
-const EMAIL_FROM = (import.meta as any).env?.VITE_EMAIL_FROM || 'noreply@motorent.com';
-const APP_URL = (import.meta as any).env?.VITE_APP_URL || 'http://localhost:5173';
+const EMAIL_FROM = (import.meta as any).env?.VITE_EMAIL_FROM || 'otp@motorent.com';
+const RESEND_DOMAIN = (import.meta as any).env?.VITE_RESEND_DOMAIN || '';
 
 // Email Templates
 const emailTemplates = {
@@ -588,6 +588,11 @@ const sendEmail = async (to: string, subject: string, html: string, text: string
 
 // Public API
 export const emailService = {
+  // Send raw email
+  async sendEmail(to: string, subject: string, html: string, text: string) {
+    return sendEmail(to, subject, html, text);
+  },
+
   // Send booking confirmation email
   async sendBookingConfirmation(data: {
     userEmail: string;
