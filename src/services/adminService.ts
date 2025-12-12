@@ -204,5 +204,176 @@ export const adminService = {
 
     if (error) throw error;
     return count || 0;
+  },
+
+  // Get top motorcycles by rental count
+  async getTopMotorcyclesByRentals(limit: number = 5) {
+    const { data, error } = await supabase
+      .from('reservations')
+      .select('motorcycle_id, motorcycles(name, hourly_rate)')
+      .eq('status', 'completed');
+
+    if (error) throw error;
+
+    const motorcycles = data || [];
+    const grouped: Record<string, { name: string; count: number; rate: number }> = {};
+    
+    motorcycles.forEach((r: any) => {
+      const id = r.motorcycle_id;
+      if (!grouped[id]) {
+        grouped[id] = { name: r.motorcycles?.name || 'Unknown', count: 0, rate: r.motorcycles?.hourly_rate || 0 };
+      }
+      grouped[id].count++;
+    });
+
+    return Object.values(grouped)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, limit)
+      .map(m => ({ name: m.name, value: m.count }));
+  },
+
+  // Get daily reservation count for last 30 days
+  async getDailyReservationTrend(days: number = 30) {
+    const { data, error } = await supabase
+      .from('reservations')
+      .select('created_at, status');
+
+    if (error) throw error;
+
+    const today = new Date();
+    const dailyData: Record<string, number> = {};
+    
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const dateKey = d.toISOString().split('T')[0];
+      dailyData[dateKey] = 0;
+    }
+
+    (data || []).forEach((r: any) => {
+      const dateKey = new Date(r.created_at).toISOString().split('T')[0];
+      if (dateKey in dailyData) {
+        dailyData[dateKey]++;
+      }
+    });
+
+    return Object.entries(dailyData).map(([date, count]) => ({ date, count }));
+  },
+
+  // Get motorcycle utilization rate
+  async getMotorcycleUtilization() {
+    const { data: motorcycles, error: mError } = await supabase
+      .from('motorcycles')
+      .select('id, name, availability');
+
+    const { data: reservations, error: rError } = await supabase
+      .from('reservations')
+      .select('motorcycle_id, status')
+      .eq('status', 'confirmed');
+
+    if (mError) throw mError;
+    if (rError) throw rError;
+
+    const total = motorcycles?.length || 0;
+    const inUse = reservations?.length || 0;
+    const utilization = total > 0 ? Math.round((inUse / total) * 100) : 0;
+
+    return {
+      utilization,
+      inUse,
+      available: total - inUse,
+      total
+    };
+  },
+
+  // Get payment success rate
+  async getPaymentSuccessRate() {
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('status, type');
+
+    if (error) throw error;
+
+    const transactions = data || [];
+    const completed = transactions.filter(t => t.status === 'completed').length;
+    const total = transactions.length;
+    const successRate = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+    return { successRate, completed, total };
+  },
+
+  // Get average reservation value
+  async getAverageReservationValue() {
+    const { data, error } = await supabase
+      .from('reservations')
+      .select('total_price')
+      .eq('status', 'completed');
+
+    if (error) throw error;
+
+    const reservations = data || [];
+    if (reservations.length === 0) return 0;
+    
+    const total = reservations.reduce((sum, r: any) => sum + (r.total_price || 0), 0);
+    return Math.round(total / reservations.length);
+  },
+
+  // Get repeat customer rate
+  async getRepeatCustomerRate() {
+    const { data, error } = await supabase
+      .from('reservations')
+      .select('user_id');
+
+    if (error) throw error;
+
+    const reservations = data || [];
+    const userCounts: Record<string, number> = {};
+    
+    reservations.forEach((r: any) => {
+      userCounts[r.user_id] = (userCounts[r.user_id] || 0) + 1;
+    });
+
+    const repeatCustomers = Object.values(userCounts).filter(count => count > 1).length;
+    const totalCustomers = Object.keys(userCounts).length;
+    const rate = totalCustomers > 0 ? Math.round((repeatCustomers / totalCustomers) * 100) : 0;
+
+    return { rate, repeatCustomers, totalCustomers };
+  },
+
+  // Get revenue breakdown by type
+  async getRevenueBreakdown() {
+    const { data, error } = await supabase
+      .from('reservations')
+      .select('total_price, status, created_at');
+
+    if (error) throw error;
+
+    const reservations = data || [];
+    const today = new Date();
+    
+    const thisMonth = reservations
+      .filter(r => {
+        const rDate = new Date(r.created_at);
+        return rDate.getMonth() === today.getMonth() && rDate.getFullYear() === today.getFullYear();
+      })
+      .reduce((sum, r: any) => sum + (r.total_price || 0), 0);
+
+    const thisWeek = reservations
+      .filter(r => {
+        const rDate = new Date(r.created_at);
+        const weekAgo = new Date(today);
+        weekAgo.setDate(weekAgo.getDate() - 7);
+        return rDate >= weekAgo;
+      })
+      .reduce((sum, r: any) => sum + (r.total_price || 0), 0);
+
+    const today_revenue = reservations
+      .filter(r => {
+        const rDate = new Date(r.created_at);
+        return rDate.toDateString() === today.toDateString();
+      })
+      .reduce((sum, r: any) => sum + (r.total_price || 0), 0);
+
+    return { today: today_revenue, week: thisWeek, month: thisMonth };
   }
 };

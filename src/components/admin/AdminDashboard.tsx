@@ -13,12 +13,18 @@ import {
   Clock,
   MapPin,
   Navigation,
-  Loader2
+  Loader2,
+  BarChart3,
+  Percent,
+  Activity,
+  Award
 } from 'lucide-react';
+
 import { Page } from '../../App';
 import { useState, useEffect } from 'react';
 import { adminService } from '../../services/adminService';
 import { toast } from 'sonner';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell, Legend } from 'recharts';
 
 interface AdminDashboardProps {
   navigate?: (page: Page) => void;
@@ -57,12 +63,40 @@ interface DashboardStats {
   };
 }
 
+// For chart data
+type MonthlyData = { month: string; revenue: number }[];
+type ReservationStatusData = { name: string; value: number }[];
+type MotorcycleUsageData = { name: string; value: number }[];
+type UserGrowthData = { month: string; users: number }[];
+type DailyReservationData = { date: string; count: number }[];
+type TopMotorcycleData = { name: string; value: number }[];
+
 export function AdminDashboard({ navigate }: AdminDashboardProps) {
+
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [monthlyRevenue, setMonthlyRevenue] = useState<MonthlyData>([]);
+  const [userGrowth, setUserGrowth] = useState<UserGrowthData>([]);
+  const [topMotorcycles, setTopMotorcycles] = useState<TopMotorcycleData>([]);
+  const [dailyReservations, setDailyReservations] = useState<DailyReservationData>([]);
+  const [utilization, setUtilization] = useState({ utilization: 0, inUse: 0, available: 0, total: 0 });
+  const [paymentSuccess, setPaymentSuccess] = useState({ successRate: 0, completed: 0, total: 0 });
+  const [avgReservationValue, setAvgReservationValue] = useState(0);
+  const [repeatCustomer, setRepeatCustomer] = useState({ rate: 0, repeatCustomers: 0, totalCustomers: 0 });
+  const [revenueBreakdown, setRevenueBreakdown] = useState({ today: 0, week: 0, month: 0 });
+
 
   useEffect(() => {
     loadDashboardStats();
+    loadMonthlyRevenue();
+    loadUserGrowth();
+    loadTopMotorcycles();
+    loadDailyReservations();
+    loadUtilization();
+    loadPaymentSuccess();
+    loadAvgReservationValue();
+    loadRepeatCustomer();
+    loadRevenueBreakdown();
   }, []);
 
   const loadDashboardStats = async () => {
@@ -75,6 +109,93 @@ export function AdminDashboard({ navigate }: AdminDashboardProps) {
       toast.error('Failed to load dashboard statistics');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadMonthlyRevenue = async () => {
+    try {
+      const data = await adminService.getMonthlyRevenue(6);
+      // Convert to array for recharts
+      const arr: MonthlyData = Object.entries(data).map(([month, revenue]) => ({ month, revenue }));
+      setMonthlyRevenue(arr.reverse());
+    } catch (error) {
+      setMonthlyRevenue([]);
+    }
+  };
+
+  // Simulate user growth for now (should be replaced with real API)
+  const loadUserGrowth = async () => {
+    if (!stats) return;
+    // Fake: last 6 months, linear growth
+    const now = new Date();
+    const arr: UserGrowthData = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      arr.push({ month: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`, users: Math.floor(stats.users.total * ((6 - i) / 6)) });
+    }
+    setUserGrowth(arr);
+  };
+
+  const loadTopMotorcycles = async () => {
+    try {
+      const data = await adminService.getTopMotorcyclesByRentals(5);
+      setTopMotorcycles(data);
+    } catch (error) {
+      console.error('Error loading top motorcycles:', error);
+    }
+  };
+
+  const loadDailyReservations = async () => {
+    try {
+      const data = await adminService.getDailyReservationTrend(30);
+      setDailyReservations(data);
+    } catch (error) {
+      console.error('Error loading daily reservations:', error);
+    }
+  };
+
+  const loadUtilization = async () => {
+    try {
+      const data = await adminService.getMotorcycleUtilization();
+      setUtilization(data);
+    } catch (error) {
+      console.error('Error loading utilization:', error);
+    }
+  };
+
+  const loadPaymentSuccess = async () => {
+    try {
+      const data = await adminService.getPaymentSuccessRate();
+      setPaymentSuccess(data);
+    } catch (error) {
+      console.error('Error loading payment success:', error);
+    }
+  };
+
+  const loadAvgReservationValue = async () => {
+    try {
+      const data = await adminService.getAverageReservationValue();
+      setAvgReservationValue(data);
+    } catch (error) {
+      console.error('Error loading avg reservation:', error);
+    }
+  };
+
+  const loadRepeatCustomer = async () => {
+    try {
+      const data = await adminService.getRepeatCustomerRate();
+      setRepeatCustomer(data);
+    } catch (error) {
+      console.error('Error loading repeat customer:', error);
+    }
+  };
+
+  const loadRevenueBreakdown = async () => {
+    try {
+      const data = await adminService.getRevenueBreakdown();
+      setRevenueBreakdown(data);
+    } catch (error) {
+      console.error('Error loading revenue breakdown:', error);
     }
   };
 
@@ -104,8 +225,22 @@ export function AdminDashboard({ navigate }: AdminDashboardProps) {
     );
   }
 
+
   // Destructure stats for easier access
   const { motorcycles, reservations, users, revenue } = stats;
+
+  // Prepare chart data
+  const reservationStatusData: ReservationStatusData = [
+    { name: 'Pending', value: reservations.pending },
+    { name: 'Confirmed', value: reservations.confirmed },
+    { name: 'Completed', value: reservations.completed },
+    { name: 'Cancelled', value: reservations.cancelled },
+  ];
+  const motorcycleUsageData: MotorcycleUsageData = [
+    { name: 'Available', value: motorcycles.available },
+    { name: 'Reserved', value: motorcycles.reserved },
+    { name: 'Maintenance', value: motorcycles.maintenance },
+  ];
 
   return (
     <div className="p-6 lg:p-8 space-y-8">
@@ -177,6 +312,185 @@ export function AdminDashboard({ navigate }: AdminDashboardProps) {
           </Card>
       </div>
 
+      {/* Dashboard Graphs */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Revenue Trend */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Revenue Trend (6 months)</CardTitle>
+            <CardDescription>Monthly completed payments</CardDescription>
+          </CardHeader>
+          <CardContent style={{ height: 300 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={monthlyRevenue} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="revenue" stroke="#8884d8" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+        {/* Reservation Status Pie */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Reservation Status Breakdown</CardTitle>
+            <CardDescription>Current reservations by status</CardDescription>
+          </CardHeader>
+          <CardContent style={{ height: 300 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={reservationStatusData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                  {reservationStatusData.map((entry, idx) => (
+                    <Cell key={`cell-${idx}`} fill={["#8884d8", "#82ca9d", "#ffc658", "#ff6b6b"][idx % 4]} />
+                  ))}
+                </Pie>
+                <Tooltip />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+        {/* Motorcycle Usage Bar */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Motorcycle Usage</CardTitle>
+            <CardDescription>Current fleet status</CardDescription>
+          </CardHeader>
+          <CardContent style={{ height: 300 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={motorcycleUsageData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="value" fill="#8884d8" />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+        {/* User Growth Line (simulated) */}
+        <Card>
+          <CardHeader>
+            <CardTitle>User Growth (Simulated)</CardTitle>
+            <CardDescription>Registered users over 6 months</CardDescription>
+          </CardHeader>
+          <CardContent style={{ height: 300 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={userGrowth} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="users" stroke="#82ca9d" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+      {/* End Dashboard Graphs */}
+
+      {/* Advanced KPI Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Fleet Utilization</CardTitle>
+            <Activity className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{utilization.utilization}%</div>
+            <p className="text-xs text-muted-foreground mt-1">{utilization.inUse} of {utilization.total} in use</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Payment Success Rate</CardTitle>
+            <Percent className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-success">{paymentSuccess.successRate}%</div>
+            <p className="text-xs text-muted-foreground mt-1">{paymentSuccess.completed} of {paymentSuccess.total} payments</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Avg Reservation Value</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">₱{avgReservationValue.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground mt-1">Per completed rental</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Repeat Customers</CardTitle>
+            <Award className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{repeatCustomer.rate}%</div>
+            <p className="text-xs text-muted-foreground mt-1">{repeatCustomer.repeatCustomers} repeat of {repeatCustomer.totalCustomers}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">This Month Revenue</CardTitle>
+            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">₱{revenueBreakdown.month.toLocaleString()}</div>
+            <p className="text-xs text-muted-foreground mt-1">Today: ₱{revenueBreakdown.today}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Extended Charts Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Daily Reservations Trend */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Daily Reservations (30 days)</CardTitle>
+            <CardDescription>Booking activity over time</CardDescription>
+          </CardHeader>
+          <CardContent style={{ height: 300 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={dailyReservations} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="count" stroke="#ffc658" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Top Motorcycles by Rental */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Top Motorcycles by Rentals</CardTitle>
+            <CardDescription>Most popular units</CardDescription>
+          </CardHeader>
+          <CardContent style={{ height: 300 }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={topMotorcycles} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="value" fill="#82ca9d" />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Secondary Views */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* GPS Tracking Quick View */}
         <Card className="cursor-pointer hover:shadow-lg transition-shadow" onClick={() => navigate?.('admin-gps')}>
