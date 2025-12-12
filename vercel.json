@@ -2,13 +2,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "devCommand": "npm run dev",
-  "env": {
-    "VITE_SUPABASE_URL": "@vite_supabase_url",
-    "VITE_SUPABASE_ANON_KEY": "@vite_supabase_anon_key",
-    "VITE_RESEND_API_KEY": "@vite_resend_api_key",
-    "VITE_EMAIL_FROM": "@vite_email_from",
-    "VITE_APP_URL": "@vite_app_url"
-  },
+
   "rewrites": [
     {
       "source": "/(.*)",
