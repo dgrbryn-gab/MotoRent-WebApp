@@ -1,20 +1,17 @@
 /**
- * Payment Service - Stripe Integration
+ * Payment Service - Cash-Only Mode
  * 
- * Handles all payment processing operations including:
- * - Creating payment intents
- * - Processing payments
+ * Handles all payment processing operations for cash payments:
+ * - Creating payment records
+ * - Confirming cash payments
  * - Refunds and cancellations
  * - Payment history
- * - Webhook handling
+ * 
+ * NOTE: This application uses CASH-ONLY payment model.
+ * All payments must be collected in-person during motorcycle pickup.
  */
 
 import { supabase } from '../lib/supabase';
-
-// Stripe configuration
-const STRIPE_PUBLISHABLE_KEY = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || '';
-const STRIPE_SECRET_KEY = import.meta.env.VITE_STRIPE_SECRET_KEY || '';
-const STRIPE_WEBHOOK_SECRET = import.meta.env.VITE_STRIPE_WEBHOOK_SECRET || '';
 
 // Payment status types
 export type PaymentStatus = 
@@ -26,7 +23,7 @@ export type PaymentStatus =
   | 'refunded'
   | 'partially_refunded';
 
-export type PaymentMethod = 'card' | 'cash';
+export type PaymentMethod = 'cash';
 
 export interface Payment {
   id: string;
@@ -54,14 +51,7 @@ export interface CreatePaymentIntentParams {
   userId: string;
   amount: number;
   currency?: string;
-  paymentMethod: PaymentMethod;
   metadata?: Record<string, any>;
-}
-
-export interface ProcessPaymentParams {
-  paymentId: string;
-  paymentMethodId?: string; // Stripe payment method ID
-  confirmationToken?: string; // For other payment methods
 }
 
 export interface RefundPaymentParams {
@@ -72,76 +62,27 @@ export interface RefundPaymentParams {
 
 /**
  * Initialize Stripe (client-side)
- * You'll need to install @stripe/stripe-js: npm install @stripe/stripe-js
+ * DEPRECATED - No longer used in cash-only mode
  */
 let stripePromise: Promise<any> | null = null;
 
 export const getStripe = () => {
-  if (!stripePromise && STRIPE_PUBLISHABLE_KEY) {
-    // Dynamically import Stripe to avoid bundling if not needed
-    stripePromise = import('@stripe/stripe-js').then(({ loadStripe }) => 
-      loadStripe(STRIPE_PUBLISHABLE_KEY)
-    );
+  if (!stripePromise) {
+    stripePromise = Promise.reject(new Error('Stripe is not available in cash-only mode'));
   }
   return stripePromise;
 };
 
 /**
- * Create a payment intent for a reservation
+ * Create a payment record for a cash reservation
+ * Cash payments are always set to 'pending' status and collected during pickup
  */
 export const createPaymentIntent = async (
   params: CreatePaymentIntentParams
-): Promise<{ payment: Payment; clientSecret?: string }> => {
-  const { reservationId, userId, amount, currency = 'PHP', paymentMethod, metadata = {} } = params;
+): Promise<{ payment: Payment }> => {
+  const { reservationId, userId, amount, currency = 'PHP', metadata = {} } = params;
 
   try {
-    // For cash payments, create payment record directly
-    if (paymentMethod === 'cash') {
-      const { data: payment, error } = await supabase
-        .from('payments')
-        .insert({
-          reservation_id: reservationId,
-          user_id: userId,
-          amount,
-          currency,
-          status: 'pending',
-          payment_method: paymentMethod,
-          metadata: {
-            ...metadata,
-            note: 'Cash payment to be collected on pickup',
-          },
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      return { payment };
-    }
-
-    // For card/online payments, create Stripe payment intent
-    const stripeResponse = await fetch('/api/create-payment-intent', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        amount: Math.round(amount * 100), // Stripe uses cents
-        currency: currency.toLowerCase(),
-        reservationId,
-        userId,
-        paymentMethod,
-        metadata,
-      }),
-    });
-
-    if (!stripeResponse.ok) {
-      throw new Error('Failed to create payment intent');
-    }
-
-    const { clientSecret, paymentIntentId } = await stripeResponse.json();
-
-    // Create payment record in database
     const { data: payment, error } = await supabase
       .from('payments')
       .insert({
@@ -150,83 +91,30 @@ export const createPaymentIntent = async (
         amount,
         currency,
         status: 'pending',
-        payment_method: paymentMethod,
-        stripe_payment_intent_id: paymentIntentId,
-        metadata,
+        payment_method: 'cash',
+        metadata: {
+          ...metadata,
+          note: 'Cash payment to be collected on pickup',
+        },
       })
       .select()
       .single();
 
     if (error) throw error;
 
-    return { payment, clientSecret };
+    return { payment };
   } catch (error: any) {
-    console.error('Error creating payment intent:', error);
-    throw new Error(error.message || 'Failed to create payment intent');
+    console.error('Error creating payment record:', error);
+    throw new Error(error.message || 'Failed to create payment record');
   }
 };
 
 /**
- * Process a payment (for card/online payments)
+ * Process a cash payment (admin confirms payment received)
  */
-export const processPayment = async (
-  params: ProcessPaymentParams
-): Promise<Payment> => {
-  const { paymentId, paymentMethodId } = params;
-
+export const processPayment = async (paymentId: string): Promise<Payment> => {
   try {
-    // Get payment details
-    const { data: payment, error: fetchError } = await supabase
-      .from('payments')
-      .select('*')
-      .eq('id', paymentId)
-      .single();
-
-    if (fetchError) throw fetchError;
-
-    if (payment.payment_method === 'cash') {
-      // For cash payments, just update status
-      const { data: updatedPayment, error: updateError } = await supabase
-        .from('payments')
-        .update({
-          status: 'succeeded',
-          paid_at: new Date().toISOString(),
-        })
-        .eq('id', paymentId)
-        .select()
-        .single();
-
-      if (updateError) throw updateError;
-
-      return updatedPayment;
-    }
-
-    // For card payments, confirm with Stripe
-    const stripe = await getStripe();
-    if (!stripe) throw new Error('Stripe not initialized');
-
-    const { error: confirmError } = await stripe.confirmCardPayment(
-      payment.stripe_payment_intent_id,
-      {
-        payment_method: paymentMethodId,
-      }
-    );
-
-    if (confirmError) {
-      // Update payment status to failed
-      await supabase
-        .from('payments')
-        .update({
-          status: 'failed',
-          error_message: confirmError.message,
-        })
-        .eq('id', paymentId);
-
-      throw new Error(confirmError.message);
-    }
-
-    // Payment successful, update status
-    const { data: updatedPayment, error: updateError } = await supabase
+    const { data: updatedPayment, error } = await supabase
       .from('payments')
       .update({
         status: 'succeeded',
@@ -236,7 +124,7 @@ export const processPayment = async (
       .select()
       .single();
 
-    if (updateError) throw updateError;
+    if (error) throw error;
 
     return updatedPayment;
   } catch (error: any) {
@@ -270,13 +158,13 @@ export const confirmCashPayment = async (paymentId: string): Promise<Payment> =>
 };
 
 /**
- * Refund a payment
+ * Refund a cash payment
  */
 export const refundPayment = async (
-  params: RefundPaymentParams
+  paymentId: string,
+  amount?: number,
+  reason?: string
 ): Promise<Payment> => {
-  const { paymentId, amount, reason = 'Requested by customer' } = params;
-
   try {
     // Get payment details
     const { data: payment, error: fetchError } = await supabase
@@ -293,52 +181,12 @@ export const refundPayment = async (
 
     const refundAmount = amount || payment.amount;
 
-    if (payment.payment_method === 'cash') {
-      // For cash payments, just update status
-      const { data: updatedPayment, error: updateError } = await supabase
-        .from('payments')
-        .update({
-          status: refundAmount === payment.amount ? 'refunded' : 'partially_refunded',
-          refund_amount: refundAmount,
-          refund_reason: reason,
-          refunded_at: new Date().toISOString(),
-        })
-        .eq('id', paymentId)
-        .select()
-        .single();
-
-      if (updateError) throw updateError;
-
-      return updatedPayment;
-    }
-
-    // For card payments, process refund through Stripe
-    const refundResponse = await fetch('/api/refund-payment', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        paymentIntentId: payment.stripe_payment_intent_id,
-        amount: Math.round(refundAmount * 100), // Stripe uses cents
-        reason,
-      }),
-    });
-
-    if (!refundResponse.ok) {
-      throw new Error('Failed to process refund with Stripe');
-    }
-
-    const { refundId } = await refundResponse.json();
-
-    // Update payment record
     const { data: updatedPayment, error: updateError } = await supabase
       .from('payments')
       .update({
         status: refundAmount === payment.amount ? 'refunded' : 'partially_refunded',
-        stripe_refund_id: refundId,
         refund_amount: refundAmount,
-        refund_reason: reason,
+        refund_reason: reason || 'Requested by customer',
         refunded_at: new Date().toISOString(),
       })
       .eq('id', paymentId)
@@ -527,7 +375,6 @@ export const getPaymentStatistics = async () => {
         ?.filter(p => ['succeeded', 'partially_refunded'].includes(p.status))
         .reduce((sum, p) => sum + p.amount, 0) || 0,
       byMethod: {
-        card: payments?.filter(p => p.payment_method === 'card').length || 0,
         cash: payments?.filter(p => p.payment_method === 'cash').length || 0,
       },
     };
@@ -542,7 +389,7 @@ export const getPaymentStatistics = async () => {
       failed: 0,
       refunded: 0,
       totalRevenue: 0,
-      byMethod: { card: 0, cash: 0 },
+      byMethod: { cash: 0 },
     };
   }
 };
@@ -574,16 +421,9 @@ export const getPaymentStatusColor = (status: PaymentStatus): string => {
 };
 
 /**
- * Test payment service (development only)
+ * Test payment service - DEPRECATED
+ * Use backend API endpoints for payment operations instead
  */
-export const testPaymentService = async () => {
-  console.log('🧪 Testing Payment Service...');
-  console.log('Stripe Publishable Key:', STRIPE_PUBLISHABLE_KEY ? '✓ Set' : '✗ Not set');
-  console.log('Stripe Secret Key:', STRIPE_SECRET_KEY ? '✓ Set' : '✗ Not set');
-
-  // Test fetching payments
-  const stats = await getPaymentStatistics();
-  console.log('Payment Statistics:', stats);
-
-  console.log('✅ Payment service test complete');
-};
+// export const testPaymentService = async () => {
+//   // Function removed in production build
+// };

@@ -55,7 +55,6 @@ import { transactionService } from '../../services/transactionService';
 import { notificationService } from '../../services/notificationService';
 import { documentService } from '../../services/documentService';
 import { userService } from '../../services/userService';
-import { createPaymentIntent } from '../../services/paymentService';
 import { transformReservations } from '../../utils/supabaseHelpers';
 
 interface AdminReservationsProps {}

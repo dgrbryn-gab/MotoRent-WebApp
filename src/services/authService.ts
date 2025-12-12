@@ -10,9 +10,6 @@ import { userService } from './userService';
 import { emailService } from './emailService';
 import type { User } from '@supabase/supabase-js';
 
-// In-memory OTP store (in production, use database)
-const otpStore = new Map<string, { code: string; expiresAt: number }>();
-
 /**
  * Generate a 6-digit OTP code
  */
@@ -21,39 +18,80 @@ const generateOTP = (): string => {
 };
 
 /**
- * Store OTP for verification (valid for 10 minutes)
+ * Store OTP for verification in database (valid for 10 minutes)
+ * Persistent across server restarts and scalable for distributed deployments
  */
-const storeOTP = (email: string, code: string): void => {
-  const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
-  otpStore.set(email, { code, expiresAt });
-  console.log(`📝 OTP stored for ${email}, expires at ${new Date(expiresAt).toISOString()}`);
+const storeOTP = async (email: string, code: string): Promise<void> => {
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
+  
+  try {
+    // First, delete any existing OTP for this email
+    await supabase
+      .from('otp_codes')
+      .delete()
+      .eq('email', email);
+    
+    // Then insert the new OTP
+    const { error } = await supabase
+      .from('otp_codes')
+      .insert({
+        email,
+        code,
+        expires_at: expiresAt
+      });
+    
+    if (error) {
+      throw new Error(`Failed to store OTP: ${error.message}`);
+    }
+  } catch (error) {
+    throw new Error(`OTP storage failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 };
 
 /**
- * Verify OTP code
+ * Verify OTP code against database
  */
-const verifyOTPCode = (email: string, code: string): boolean => {
-  const stored = otpStore.get(email);
-  if (!stored) {
-    console.log(`❌ No OTP found for ${email}`);
-    return false;
+const verifyOTPCode = async (email: string, code: string): Promise<boolean> => {
+  try {
+    const { data, error } = await supabase
+      .from('otp_codes')
+      .select('*')
+      .eq('email', email)
+      .maybeSingle();
+    
+    if (error && error.code !== 'PGRST116') {
+      throw error;
+    }
+    
+    if (!data) {
+      return false;
+    }
+    
+    // Check if expired
+    if (new Date(data.expires_at) < new Date()) {
+      // Delete expired OTP
+      await supabase
+        .from('otp_codes')
+        .delete()
+        .eq('id', data.id);
+      return false;
+    }
+    
+    // Check if code matches
+    const isValid = data.code === code;
+    
+    if (isValid) {
+      // Delete OTP after successful verification
+      await supabase
+        .from('otp_codes')
+        .delete()
+        .eq('id', data.id);
+    }
+    
+    return isValid;
+  } catch (error) {
+    throw new Error(`OTP verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
-  
-  if (Date.now() > stored.expiresAt) {
-    console.log(`❌ OTP expired for ${email}`);
-    otpStore.delete(email);
-    return false;
-  }
-  
-  const isValid = stored.code === code;
-  if (isValid) {
-    otpStore.delete(email);
-    console.log(`✅ OTP verified for ${email}`);
-  } else {
-    console.log(`❌ OTP mismatch for ${email}`);
-  }
-  
-  return isValid;
 };
 
 /**
@@ -193,7 +231,7 @@ export const signUp = async (data: SignUpData): Promise<AuthUser> => {
     
     // Generate and send OTP via Resend
     const otp = generateOTP();
-    storeOTP(data.email, otp);
+    await storeOTP(data.email, otp);
     await sendOTPViaResend(data.email, otp);
     console.log('📨 OTP sent via Resend to:', data.email);
     
@@ -658,8 +696,9 @@ export const verifyOTP = async ({ email, token, type }: {
   type: 'signup' | 'recovery' | 'email_change';
 }): Promise<AuthUser> => {
   try {
-    // Verify the OTP code against our custom store
-    if (!verifyOTPCode(email, token)) {
+    // Verify the OTP code against database
+    const isValid = await verifyOTPCode(email, token);
+    if (!isValid) {
       throw new Error('Invalid or expired verification code.');
     }
 
@@ -701,7 +740,7 @@ export const resendOTP = async (email: string, type: 'signup' | 'recovery'): Pro
   try {
     // Generate a new OTP and send via Resend
     const otp = generateOTP();
-    storeOTP(email, otp);
+    await storeOTP(email, otp);
     await sendOTPViaResend(email, otp);
     console.log(`✅ OTP resent via Resend for ${type} to ${email}`);
   } catch (error: any) {
