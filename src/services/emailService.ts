@@ -571,7 +571,8 @@ const sendEmail = async (to: string, subject: string, html: string, text: string
   try {
     switch (EMAIL_SERVICE) {
       case 'resend':
-        return await sendEmailViaResend(to, subject, html, text);
+        // Use Supabase Edge Function to send via Resend (avoids CORS issues)
+        return await sendEmailViaSupabaseFunction(to, subject, html, text);
       case 'sendgrid':
         return await sendEmailViaSendGrid(to, subject, html, text);
       case 'supabase':
@@ -582,6 +583,25 @@ const sendEmail = async (to: string, subject: string, html: string, text: string
     }
   } catch (error) {
     console.error('Failed to send email:', error);
+    throw error;
+  }
+};
+
+// Send email via Supabase Edge Function (for Resend)
+const sendEmailViaSupabaseFunction = async (to: string, subject: string, html: string, text: string) => {
+  try {
+    const { data, error } = await supabase.functions.invoke('send-otp', {
+      body: { to, subject, html, text }
+    });
+
+    if (error) {
+      console.error('Supabase function error:', error);
+      throw new Error(`Edge Function error: ${error.message || JSON.stringify(error)}`);
+    }
+
+    return data;
+  } catch (error: any) {
+    console.error('Failed to send email via Supabase Function:', error);
     throw error;
   }
 };

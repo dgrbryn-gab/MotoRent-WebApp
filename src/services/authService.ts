@@ -94,7 +94,7 @@ const sendOTPViaResend = async (email: string, otp: string): Promise<void> => {
             <p>Enter this code in the app to verify your email address and complete your signup.</p>
             
             <p style="color: #999; font-size: 0.9em;">
-              If you didn't request this code, please ignore this email. Do not share this code with anyone.
+              If you did not request this code, please ignore this email. Do not share this code with anyone.
             </p>
           </div>
           <div class="footer">
@@ -106,22 +106,17 @@ const sendOTPViaResend = async (email: string, otp: string): Promise<void> => {
       </html>
     `;
 
-    const text = `
-MotoRent Verification Code
+    const text = `MotoRent Verification Code\n\nYour verification code: ${otp}\n\nValid for 10 minutes. Enter this code in the app to verify your email address.\n\nIf you did not request this code, please ignore this email.\n\nMotoRent Dumaguete`;
 
-Your verification code: ${otp}
-
-Valid for 10 minutes. Enter this code in the app to verify your email address.
-
-If you didn't request this code, please ignore this email.
-
-MotoRent Dumaguete
-    `;
-
+    console.log('📧 Attempting to send OTP to:', email);
+    console.log('📧 OTP code:', otp);
+    
     await emailService.sendEmail(email, subject, html, text);
-    console.log(`📧 OTP sent to ${email}`);
+    console.log(`✅ OTP sent successfully to ${email}`);
   } catch (error: any) {
-    console.error('Failed to send OTP via Resend:', error);
+    console.error('❌ Failed to send OTP via Resend:', error);
+    console.error('Error message:', error.message);
+    console.error('Error details:', JSON.stringify(error, null, 2));
     throw new Error('Failed to send verification code. Please try again.');
   }
 };
@@ -670,47 +665,14 @@ export const verifyOTP = async ({ email, token, type }: {
 
     console.log(`✅ OTP verified for ${email}`);
 
-    // Get the user from Supabase Auth
-    const { data: { users }, error: usersError } = await supabase.auth.admin.listUsers();
+    // Get user profile from database (we stored the email during signup)
+    const userProfile = await userService.getUserByEmail(email);
     
-    if (usersError) {
-      throw usersError;
-    }
-
-    const authUser = users.find(u => u.email === email);
-    
-    if (!authUser) {
+    if (!userProfile) {
       throw new Error('User not found. Please sign up again.');
     }
 
-    // Create session for this user by signing them in
-    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-      email: email,
-      password: '', // We don't have password here, so this might fail
-    });
-
-    // Alternative: Use supabase.auth.setSession() if available
-    // For now, let's just verify the user exists and get their profile
-
-    // Get user profile from database
-    const userProfile = await userService.getUserById(authUser.id);
-    
-    if (!userProfile) {
-      // Create profile if it doesn't exist
-      const newProfile = await userService.createUser({
-        id: authUser.id,
-        name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
-        email: authUser.email!,
-        phone: authUser.user_metadata?.phone || 'N/A',
-      });
-
-      return {
-        id: newProfile.id,
-        email: newProfile.email,
-        name: newProfile.name,
-        phone: newProfile.phone,
-      };
-    }
+    console.log(`✅ User profile found: ${userProfile.name}`);
 
     return {
       id: userProfile.id,
