@@ -583,7 +583,7 @@ export const getCurrentUser = async (): Promise<AuthUser | null> => {
     const userProfile = await userService.getUserById(user.id);
 
     if (!userProfile) {
-      console.log('⚠️ User profile not found in database, creating...');
+      console.log('⚠️ User profile not found in database, trying to create...');
       // If profile doesn't exist, create it from auth data
       try {
         const newProfile = await userService.createUser({
@@ -602,10 +602,15 @@ export const getCurrentUser = async (): Promise<AuthUser | null> => {
           phone: newProfile.phone,
         };
       } catch (createError: any) {
-        console.error('❌ Failed to create user profile:', createError);
-        // If profile creation fails, sign out the user
-        await supabase.auth.signOut();
-        throw new Error('Failed to create user profile. Please try signing in again.');
+        console.error('⚠️ Failed to create user profile during getCurrentUser:', createError);
+        // Don't throw - just return basic user info from auth
+        // This prevents blocking signup/OTP flow
+        return {
+          id: user.id,
+          email: user.email!,
+          name: user.user_metadata?.name || user.email?.split('@')[0] || 'User',
+          phone: user.user_metadata?.phone || 'N/A',
+        };
       }
     }
 
