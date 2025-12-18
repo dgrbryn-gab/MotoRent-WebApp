@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { contactService } from '../../services/contactService';
+import { reservationService } from '../../services/reservationService';
 import { supabase } from '../../lib/supabase';
 
 interface AdminSidebarProps {
@@ -23,12 +24,15 @@ interface AdminSidebarProps {
   currentPage: Page;
   navigate: (page: Page) => void;
   logout: () => void;
+  messageRefreshTrigger?: number;
+  reservationRefreshTrigger?: number;
 }
 
-export function AdminSidebar({ adminUser, currentPage, navigate, logout }: AdminSidebarProps) {
+export function AdminSidebar({ adminUser, currentPage, navigate, logout, messageRefreshTrigger = 0, reservationRefreshTrigger = 0 }: AdminSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [newMessageCount, setNewMessageCount] = useState(0);
+  const [pendingReservationCount, setPendingReservationCount] = useState(0);
 
   // Fetch new message count
   useEffect(() => {
@@ -50,27 +54,13 @@ export function AdminSidebar({ adminUser, currentPage, navigate, logout }: Admin
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*',
           schema: 'public',
           table: 'contact_messages'
         },
-        (payload) => {
-          // When a message status changes, refetch the count
-          if (payload.new?.status !== payload.old?.status) {
-            fetchMessageCount();
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'contact_messages'
-        },
-        () => {
-          // When a new message is inserted, refetch the count
-          fetchMessageCount();
+        async (payload) => {
+          // Refetch count on any change (INSERT, UPDATE, DELETE)
+          await fetchMessageCount();
         }
       )
       .subscribe();
@@ -78,7 +68,43 @@ export function AdminSidebar({ adminUser, currentPage, navigate, logout }: Admin
     return () => {
       channel.unsubscribe();
     };
-  }, []);
+  }, [messageRefreshTrigger]);
+
+  // Fetch pending reservation count
+  useEffect(() => {
+    const fetchPendingReservationCount = async () => {
+      try {
+        const reservations = await reservationService.getAllReservations();
+        const pendingCount = reservations.filter(res => res.status === 'pending').length;
+        setPendingReservationCount(pendingCount);
+      } catch (error) {
+        console.error('Error fetching pending reservation count:', error);
+      }
+    };
+
+    fetchPendingReservationCount();
+
+    // Subscribe to real-time updates for reservation status changes
+    const channel = supabase
+      .channel('reservations_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'reservations'
+        },
+        async (payload) => {
+          // Refetch count on any change
+          await fetchPendingReservationCount();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
+  }, [reservationRefreshTrigger]);
 
   const navItems = [
     { id: 'admin-dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -166,6 +192,7 @@ export function AdminSidebar({ adminUser, currentPage, navigate, logout }: Admin
               const Icon = item.icon;
               const isActive = currentPage === item.id;
               const isMessagesItem = item.id === 'admin-messages';
+              const isReservationsItem = item.id === 'admin-reservations';
               
               return (
                 <button
@@ -188,6 +215,11 @@ export function AdminSidebar({ adminUser, currentPage, navigate, logout }: Admin
                       {isMessagesItem && newMessageCount > 0 && (
                         <div className="flex items-center justify-center min-w-[24px] h-6 px-2 bg-accent text-white rounded-full text-xs font-bold">
                           {newMessageCount}
+                        </div>
+                      )}
+                      {isReservationsItem && pendingReservationCount > 0 && (
+                        <div className="flex items-center justify-center min-w-[24px] h-6 px-2 bg-orange-500 text-white rounded-full text-xs font-bold">
+                          {pendingReservationCount}
                         </div>
                       )}
                     </div>

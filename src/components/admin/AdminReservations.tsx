@@ -57,9 +57,11 @@ import { documentService } from '../../services/documentService';
 import { userService } from '../../services/userService';
 import { transformReservations } from '../../utils/supabaseHelpers';
 
-interface AdminReservationsProps {}
+interface AdminReservationsProps {
+  onReservationStatusChange?: () => void;
+}
 
-export function AdminReservations({}: AdminReservationsProps) {
+export function AdminReservations({ onReservationStatusChange }: AdminReservationsProps) {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
@@ -69,6 +71,25 @@ export function AdminReservations({}: AdminReservationsProps) {
   const [showDetailsDialog, setShowDetailsDialog] = useState(false);
   const [showVerifyDialog, setShowVerifyDialog] = useState(false);
   const [verificationAction, setVerificationAction] = useState<'approve' | 'reject'>('approve');
+  
+  // Early completion dialog state
+  const [showEarlyCompletionDialog, setShowEarlyCompletionDialog] = useState(false);
+  const [earlyCompletionReason, setEarlyCompletionReason] = useState('early-return');
+  const [earlyCompletionNotes, setEarlyCompletionNotes] = useState('');
+
+  // Check if rental is still ongoing
+  const isRentalOngoing = (reservation: Reservation): boolean => {
+    const endDate = new Date(reservation.endDate);
+    const now = new Date();
+    return now < endDate;
+  };
+
+  // Get days remaining for a rental
+  const getDaysRemaining = (reservation: Reservation): number => {
+    const endDate = new Date(reservation.endDate);
+    const now = new Date();
+    return Math.ceil((endDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  };
   const [adminNotes, setAdminNotes] = useState('');
   const [userDocuments, setUserDocuments] = useState<any[]>([]);
 
@@ -107,11 +128,66 @@ export function AdminReservations({}: AdminReservationsProps) {
         throw new Error('Reservation not found');
       }
 
+      // Check if trying to mark as completed while rental is still ongoing
+      if (status === 'completed' && isRentalOngoing(reservation) && !rejectionReason) {
+        // If no reason provided (early completion without dialog confirmation), throw error
+        throw new Error(`Cannot mark as completed. Rental period is still ongoing. ${getDaysRemaining(reservation)} day(s) remaining.`);
+      }
+
       console.log('🔄 Updating reservation:', id, 'to status:', status);
       console.log('🏍️ Motorcycle ID:', reservation.motorcycleId);
       
       // Update reservation status in database
       await reservationService.updateStatus(id, status);
+      
+      // If this is an early completion, update admin notes and notify customer
+      if (status === 'completed' && rejectionReason) {
+        // Store the early completion details in admin notes
+        const { error: updateError } = await supabase
+          .from('reservations')
+          .update({ 
+            admin_notes: (reservation.adminNotes || '') + rejectionReason
+          })
+          .eq('id', id);
+        
+        if (updateError) {
+          console.error('⚠️ Failed to update admin notes:', updateError);
+        }
+
+        // Send notification to customer about early completion and NO REFUND policy
+        if (reservation.userId) {
+          try {
+            // Check if it's an early return (no refund)
+            const isEarlyReturn = rejectionReason.includes('EARLY COMPLETION REASON: early-return');
+            
+            if (isEarlyReturn) {
+              await notificationService.createNotification({
+                user_id: reservation.userId,
+                title: '✅ Rental Completed - No Refund Policy Applied',
+                message: `Your rental for ${reservation.motorcycle.name} has been marked as completed. As per our policy, early returns are charged the full rental amount with NO REFUND. Your payment of ₱${reservation.totalPrice.toLocaleString()} has been retained.`,
+                type: 'confirmed',
+                read: false,
+                timestamp: new Date().toISOString()
+              });
+              
+              console.log('✅ Sent early return notification to customer:', reservation.userId);
+            } else {
+              // For other early completion reasons
+              await notificationService.createNotification({
+                user_id: reservation.userId,
+                title: '✅ Rental Completed',
+                message: `Your rental for ${reservation.motorcycle.name} has been marked as completed.`,
+                type: 'confirmed',
+                read: false,
+                timestamp: new Date().toISOString()
+              });
+            }
+          } catch (notifError) {
+            console.error('⚠️ Failed to send completion notification:', notifError);
+            // Don't fail the completion if notification fails
+          }
+        }
+      }
       
       // Update motorcycle availability based on status
       if (status === 'confirmed') {
@@ -399,6 +475,9 @@ export function AdminReservations({}: AdminReservationsProps) {
         });
       }
 
+      // Trigger sidebar refresh to update pending reservations badge
+      onReservationStatusChange?.();
+
       setShowVerifyDialog(false);
       setSelectedReservation(null);
     } catch (error: any) {
@@ -650,14 +729,24 @@ export function AdminReservations({}: AdminReservationsProps) {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={async () => {
-                              try {
-                                await handleUpdateReservation(reservation.id, 'completed');
-                                toast.success('Reservation marked as completed');
-                              } catch (error: any) {
-                                toast.error('Failed to update reservation');
-                              }
-                            }}>
+                            <DropdownMenuItem 
+                              onClick={() => {
+                                // If rental is still ongoing, show warning dialog
+                                if (isRentalOngoing(reservation)) {
+                                  setSelectedReservation(reservation);
+                                  setEarlyCompletionReason('early-return');
+                                  setEarlyCompletionNotes('');
+                                  setShowEarlyCompletionDialog(true);
+                                } else {
+                                  // Otherwise complete directly
+                                  handleUpdateReservation(reservation.id, 'completed').then(() => {
+                                    toast.success('Reservation marked as completed');
+                                  }).catch((error: any) => {
+                                    toast.error(error.message || 'Failed to update reservation');
+                                  });
+                                }
+                              }}
+                            >
                               <CheckCircle className="w-4 h-4 mr-2" />
                               Mark as Completed
                             </DropdownMenuItem>
@@ -1132,6 +1221,125 @@ export function AdminReservations({}: AdminReservationsProps) {
                   {updating ? 'Rejecting...' : 'Reject Reservation'}
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Early Completion Warning Dialog */}
+      <Dialog open={showEarlyCompletionDialog} onOpenChange={setShowEarlyCompletionDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="w-5 h-5 text-orange-500" />
+              Complete Rental Early?
+            </DialogTitle>
+            <DialogDescription>
+              This rental period doesn't end until <span className="font-semibold text-foreground">{selectedReservation && new Date(selectedReservation.endDate).toLocaleDateString()}</span>
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Warning Banner */}
+            <div className="bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
+              <p className="text-sm text-orange-900 dark:text-orange-100">
+                <strong>⚠️ Important:</strong> Completing early means the customer keeps the full rental amount with <strong>NO REFUND</strong>.
+              </p>
+            </div>
+
+            {/* Rental Details */}
+            {selectedReservation && (
+              <div className="bg-muted rounded-lg p-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Scheduled End:</span>
+                  <span className="font-medium">{new Date(selectedReservation.endDate).toLocaleDateString()}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Days Remaining:</span>
+                  <span className="font-medium">{getDaysRemaining(selectedReservation)} days</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Full Amount Charged:</span>
+                  <span className="font-bold text-green-600">₱{selectedReservation.totalPrice.toLocaleString()}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Reason Selection */}
+            <div>
+              <Label htmlFor="reason">Reason for Early Completion</Label>
+              <Select value={earlyCompletionReason} onValueChange={setEarlyCompletionReason}>
+                <SelectTrigger id="reason" className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="early-return">
+                    Early Return - Customer Returned Early
+                  </SelectItem>
+                  <SelectItem value="dispute">
+                    Dispute Resolution
+                  </SelectItem>
+                  <SelectItem value="system-correction">
+                    System Correction
+                  </SelectItem>
+                  <SelectItem value="other">
+                    Other
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Optional Notes */}
+            <div>
+              <Label htmlFor="early-notes">Additional Notes (Optional)</Label>
+              <Textarea
+                id="early-notes"
+                placeholder="Add any details about why this rental is being completed early..."
+                value={earlyCompletionNotes}
+                onChange={(e) => setEarlyCompletionNotes(e.target.value)}
+                className="mt-2"
+                rows={3}
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setShowEarlyCompletionDialog(false)}
+              disabled={updating}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="default"
+              onClick={async () => {
+                if (selectedReservation) {
+                  try {
+                    // Store the reason and notes in admin notes
+                    const reasonText = `\n📋 EARLY COMPLETION REASON: ${earlyCompletionReason}`;
+                    const notesText = earlyCompletionNotes ? `\n📝 Notes: ${earlyCompletionNotes}` : '';
+                    const timestamp = `\n⏰ Completed Early At: ${new Date().toLocaleString()}`;
+                    const warningText = '\n⚠️ NO REFUND - Full amount retained';
+                    
+                    // Update with notes
+                    await handleUpdateReservation(
+                      selectedReservation.id, 
+                      'completed',
+                      `${reasonText}${notesText}${timestamp}${warningText}`
+                    );
+                    
+                    toast.success('Reservation marked as completed (NO REFUND applied)');
+                    setShowEarlyCompletionDialog(false);
+                  } catch (error: any) {
+                    toast.error(error.message || 'Failed to complete reservation');
+                  }
+                }
+              }}
+              disabled={updating}
+            >
+              {updating && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Confirm & Complete (NO REFUND)
             </Button>
           </DialogFooter>
         </DialogContent>

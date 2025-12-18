@@ -9,6 +9,9 @@ import { ReservationsPage } from './components/ReservationsPage';
 import { TransactionsPage } from './components/TransactionsPage';
 import { ProfilePage } from './components/ProfilePage';
 import { SettingsPage } from './components/SettingsPage';
+import { FavoritesPage } from './components/FavoritesPage';
+import { HelpSupportPage } from './components/HelpSupportPage';
+import { EditProfilePage } from './components/EditProfilePage';
 import { Header } from './components/Header';
 import { toast } from 'sonner';
 
@@ -41,7 +44,7 @@ export interface Notification {
   timestamp: string;
 }
 
-export type Page = 'landing' | 'login' | 'signup' | 'home' | 'details' | 'booking' | 'reservations' | 'transactions' | 'profile' | 'settings' | 'admin-login' | 'admin-dashboard' | 'admin-motorcycles' | 'admin-reservations' | 'admin-users' | 'admin-transactions' | 'admin-messages' | 'admin-gps' | 'admin-settings';
+export type Page = 'landing' | 'login' | 'signup' | 'home' | 'details' | 'booking' | 'reservations' | 'transactions' | 'profile' | 'settings' | 'favorites' | 'help-support' | 'edit-profile' | 'admin-login' | 'admin-dashboard' | 'admin-motorcycles' | 'admin-reservations' | 'admin-users' | 'admin-transactions' | 'admin-messages' | 'admin-gps' | 'admin-settings';
 
 export interface User {
   id: string;
@@ -143,6 +146,8 @@ export default function App() {
   const [isGuest, setIsGuest] = useState(false);
   const [redirectAfterLogin, setRedirectAfterLogin] = useState<Page | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [messageRefreshTrigger, setMessageRefreshTrigger] = useState(0);
+  const [reservationRefreshTrigger, setReservationRefreshTrigger] = useState(0);
   
   // Local state for admin management (still used by admin components)
   // User-facing components now load directly from Supabase
@@ -538,6 +543,8 @@ export default function App() {
             currentPage={currentPage}
             navigate={navigate}
             logout={adminLogout}
+            messageRefreshTrigger={messageRefreshTrigger}
+            reservationRefreshTrigger={reservationRefreshTrigger}
           />
           
           <main className="flex-1 min-w-0 pt-16 lg:pt-0 lg:pl-4">
@@ -553,7 +560,7 @@ export default function App() {
             )}
 
             {currentPage === 'admin-reservations' && adminUser && (
-              <AdminReservations />
+              <AdminReservations onReservationStatusChange={() => setReservationRefreshTrigger(prev => prev + 1)} />
             )}
 
             {currentPage === 'admin-users' && adminUser && (
@@ -561,7 +568,7 @@ export default function App() {
             )}
 
             {currentPage === 'admin-messages' && adminUser && (
-              <AdminMessages />
+              <AdminMessages onMessageStatusChange={() => setMessageRefreshTrigger(prev => prev + 1)} />
             )}
 
             {currentPage === 'admin-transactions' && adminUser && (
@@ -641,6 +648,7 @@ export default function App() {
         {currentPage === 'transactions' && (
           <TransactionsPage 
             reservations={reservations}
+            user={user || undefined}
           />
         )}
         
@@ -657,6 +665,38 @@ export default function App() {
             user={user}
             setUser={updateCurrentUserProfile}
             logout={logout}
+          />
+        )}
+
+        {currentPage === 'favorites' && user && (
+          <FavoritesPage 
+            onNavigate={(page, motorcycleId) => {
+              if (page === 'details' && motorcycleId) {
+                // Fetch the motorcycle from favorites
+                const savedFavorites = localStorage.getItem('favoritedMotorcycles');
+                if (savedFavorites) {
+                  const favorites = JSON.parse(savedFavorites);
+                  const motorcycle = favorites.find((m: Motorcycle) => m.id === motorcycleId);
+                  if (motorcycle) {
+                    setSelectedMotorcycle(motorcycle);
+                  }
+                }
+              }
+              navigate(page as Page);
+            }}
+          />
+        )}
+
+        {currentPage === 'help-support' && user && (
+          <HelpSupportPage 
+            user={user}
+          />
+        )}
+
+        {currentPage === 'edit-profile' && user && (
+          <EditProfilePage 
+            user={user}
+            setUser={updateCurrentUserProfile}
           />
         )}
 

@@ -1,22 +1,93 @@
-import { useState } from 'react';
-import { Calendar, DollarSign, Bike, Filter } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Calendar, DollarSign, Bike, Filter, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
 import { Separator } from './ui/separator';
 import { ImageWithFallback } from './figma/ImageWithFallback';
+import { supabase } from '../lib/supabase';
+import { authService } from '../services/authService';
+import { reservationService } from '../services/reservationService';
+import { toast } from 'sonner';
 import type { Reservation } from '../App';
 
 interface TransactionsPageProps {
   reservations?: Reservation[];
   transactions?: any[];
+  user?: { id: string; name: string; email: string };
 }
 
-export function TransactionsPage({ reservations = [], transactions = [] }: TransactionsPageProps) {
-  // If we have reservations, use them for rental history; otherwise fall back to empty state
-  const rentalHistoryData = reservations || [];
-  
-  // Filter only completed reservations
-  const completedRentals = rentalHistoryData.filter(r => r.status === 'completed');
+export function TransactionsPage({ reservations = [], transactions = [], user }: TransactionsPageProps) {
+  const [completedRentals, setCompletedRentals] = useState<Reservation[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Load completed reservations from database
+  useEffect(() => {
+    const loadCompletedReservations = async () => {
+      try {
+        setLoading(true);
+        
+        // Get current user if not provided
+        let currentUser = user;
+        if (!currentUser) {
+          const authUser = await authService.getCurrentUser();
+          if (!authUser) {
+            setCompletedRentals([]);
+            setLoading(false);
+            return;
+          }
+          currentUser = authUser;
+        }
+
+        // Fetch user's completed reservations from Supabase with motorcycle details
+        const { data, error } = await supabase
+          .from('reservations')
+          .select(`
+            id,
+            start_date,
+            end_date,
+            total_price,
+            pickup_time,
+            return_time,
+            status,
+            motorcycles (id, name, type, image, price_per_day)
+          `)
+          .eq('user_id', currentUser.id)
+          .eq('status', 'completed')
+          .order('end_date', { ascending: false });
+
+        if (error) throw error;
+        
+        console.log('Raw reservation data:', data);
+        
+        // Map database fields to component fields (snake_case to camelCase)
+        const rentalsWithMotorcycles = (data || []).map((rental: any) => ({
+          id: rental.id,
+          startDate: rental.start_date,
+          endDate: rental.end_date,
+          totalPrice: rental.total_price || 0,
+          pickupTime: rental.pickup_time,
+          returnTime: rental.return_time,
+          status: rental.status,
+          motorcycle: {
+            ...rental.motorcycles,
+            pricePerDay: rental.motorcycles?.price_per_day || 0
+          }
+        }));
+        
+        console.log('Mapped rentals:', rentalsWithMotorcycles);
+        
+        setCompletedRentals(rentalsWithMotorcycles);
+      } catch (error: any) {
+        console.error('Error loading completed reservations:', error);
+        toast.error('Failed to load rental history');
+        setCompletedRentals([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadCompletedReservations();
+  }, [user]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -27,7 +98,10 @@ export function TransactionsPage({ reservations = [], transactions = [] }: Trans
   };
 
   // Calculate total spent on completed rentals
-  const totalSpent = completedRentals.reduce((sum, rental) => sum + rental.totalPrice, 0);
+  const totalSpent = completedRentals.reduce((sum, rental) => {
+    const rentalTotal = rental.totalPrice || (rental.motorcycle?.pricePerDay ? rental.motorcycle.pricePerDay * calculateDays(rental.startDate, rental.endDate) : 0);
+    return sum + rentalTotal;
+  }, 0);
 
   // Calculate number of days rented
   const calculateDays = (startDate: string, endDate: string) => {
@@ -98,9 +172,16 @@ export function TransactionsPage({ reservations = [], transactions = [] }: Trans
           <CardTitle>Completed Rentals</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {completedRentals.length > 0 ? (
+          {loading ? (
+            <div className="p-8 text-center">
+              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-primary" />
+              <p className="text-muted-foreground">Loading rental history...</p>
+            </div>
+          ) : completedRentals.length > 0 ? (
             completedRentals.map((rental, index) => {
               const daysRented = calculateDays(rental.startDate, rental.endDate);
+              // Calculate total price if not provided
+              const totalPrice = rental.totalPrice || (rental.motorcycle?.pricePerDay ? rental.motorcycle.pricePerDay * daysRented : 0);
               return (
                 <div key={rental.id}>
                   <div className="p-6 hover:bg-muted/50 transition-colors">
@@ -108,8 +189,8 @@ export function TransactionsPage({ reservations = [], transactions = [] }: Trans
                       {/* Motorcycle Image */}
                       <div className="w-24 h-24 rounded-lg overflow-hidden flex-shrink-0">
                         <ImageWithFallback
-                          src={rental.motorcycle.image}
-                          alt={rental.motorcycle.name}
+                          src={rental.motorcycle?.image || ''}
+                          alt={rental.motorcycle?.name || 'Motorcycle'}
                           className="w-full h-full object-cover"
                         />
                       </div>
@@ -118,8 +199,8 @@ export function TransactionsPage({ reservations = [], transactions = [] }: Trans
                       <div className="flex-1">
                         <div className="flex items-start justify-between">
                           <div className="flex-1">
-                            <h3 className="font-semibold text-lg mb-1">{rental.motorcycle.name}</h3>
-                            <p className="text-sm text-muted-foreground mb-3">{rental.motorcycle.type}</p>
+                            <h3 className="font-semibold text-lg mb-1">{rental.motorcycle?.name || 'Unknown Motorcycle'}</h3>
+                            <p className="text-sm text-muted-foreground mb-3">{rental.motorcycle?.type || 'Unknown'}</p>
                             
                             <div className="grid grid-cols-2 gap-3 mb-2">
                               <div>
@@ -151,7 +232,7 @@ export function TransactionsPage({ reservations = [], transactions = [] }: Trans
                           {/* Amount */}
                           <div className="text-right">
                             <p className="text-sm text-muted-foreground mb-1">Amount Paid</p>
-                            <p className="text-2xl font-bold text-green-600">₱{rental.totalPrice.toLocaleString()}</p>
+                            <p className="text-2xl font-bold text-green-600">₱{(totalPrice || 0).toLocaleString()}</p>
                             <p className="text-xs text-muted-foreground mt-2">💵 Cash</p>
                           </div>
                         </div>

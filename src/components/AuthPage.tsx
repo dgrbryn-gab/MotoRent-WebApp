@@ -245,7 +245,7 @@ export function AuthPage({ navigate, login, adminLogin }: AuthPageProps) {
           <div className="w-full max-w-md">
             <div className="text-center mb-8">
               <h1 className="text-3xl lg:text-4xl font-bold text-teal-500 mb-2">Create Account</h1>
-              <p className="text-gray-600 text-sm mb-6">Join our community today</p>
+              <p className="text-muted-foreground text-sm mb-6">Join our community today</p>
             </div>
 
             <form onSubmit={handleSignUp} className="space-y-3">
@@ -331,7 +331,7 @@ export function AuthPage({ navigate, login, adminLogin }: AuthPageProps) {
               </Button>
             </form>
 
-            <p className="text-center text-gray-600 text-sm mt-6">
+            <p className="text-center text-muted-foreground text-sm mt-6">
               Already have an account?{' '}
               <a href="#" onClick={(e) => { e.preventDefault(); navigate('login'); }} className="text-teal-500 font-semibold hover:text-teal-600">
                 Sign in

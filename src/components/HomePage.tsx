@@ -94,7 +94,7 @@ export function HomePage({ selectMotorcycle, searchTerm: externalSearchTerm, onS
     });
 
   return (
-    <div className="bg-muted min-h-screen">
+    <div className="bg-background min-h-screen">
       <div className="container-custom p-lg">
         {/* Header Section */}
         <div className="p-lg">

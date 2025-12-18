@@ -427,6 +427,22 @@ export function ReservationsPage({ user }: ReservationsPageProps) {
                     </div>
                   </div>
 
+                  {/* Important Refund Policy */}
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-semibold flex items-center gap-1 text-orange-600">
+                      <AlertCircle className="w-3 h-3" />
+                      Refund Policy
+                    </h4>
+                    <div className="bg-orange-50 dark:bg-orange-950 border border-orange-200 dark:border-orange-800 rounded p-1.5 text-xs space-y-0.5">
+                      <p className="font-medium text-orange-900 dark:text-orange-100">
+                        ⚠️ Early Return: <span className="font-bold">NO REFUND</span>
+                      </p>
+                      <p className="text-orange-800 dark:text-orange-200">
+                        If you return the motorcycle before the scheduled return date, the full rental amount will be retained with no refund.
+                      </p>
+                    </div>
+                  </div>
+
                   {/* Document Status */}
                   {selectedReservation.license_image_url && (
                     <div className="space-y-1">

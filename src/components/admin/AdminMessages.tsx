@@ -19,7 +19,11 @@ import { contactService, ContactMessage } from '../../services/contactService';
 import { emailService } from '../../services/emailService';
 import { toast } from 'sonner';
 
-export function AdminMessages() {
+interface AdminMessagesProps {
+  onMessageStatusChange?: () => void;
+}
+
+export function AdminMessages({ onMessageStatusChange }: AdminMessagesProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [messages, setMessages] = useState<ContactMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,20 +51,28 @@ export function AdminMessages() {
   };
 
   const handleViewMessage = async (message: ContactMessage) => {
+    // Update UI immediately
     setSelectedMessage(message);
     setIsModalOpen(true);
     
-    // Mark as read
+    // Mark as read if it's a new message
     if (message.status === 'new') {
       try {
-        await contactService.markAsRead(message.id);
-        // Update local state
+        // Update local state first for immediate UI feedback
+        const updatedMessage = { ...message, status: 'read' as const };
         setMessages(messages.map(m => 
-          m.id === message.id ? { ...m, status: 'read' } : m
+          m.id === message.id ? updatedMessage : m
         ));
-        setSelectedMessage({ ...message, status: 'read' });
+        setSelectedMessage(updatedMessage);
+        
+        // Then mark as read in the database
+        await contactService.markAsRead(message.id);
+        
+        // Trigger sidebar refresh
+        onMessageStatusChange?.();
       } catch (error: any) {
         console.error('Error marking message as read:', error);
+        toast.error('Failed to mark message as read');
       }
     }
   };
@@ -75,6 +87,9 @@ export function AdminMessages() {
       ));
       setSelectedMessage({ ...selectedMessage, status: 'responded' });
       toast.success('Message marked as responded');
+      
+      // Trigger sidebar refresh
+      onMessageStatusChange?.();
     } catch (error: any) {
       console.error('Error marking message as responded:', error);
       toast.error('Failed to mark message as responded');

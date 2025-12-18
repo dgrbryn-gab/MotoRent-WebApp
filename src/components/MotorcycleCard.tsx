@@ -3,7 +3,8 @@ import { Card, CardContent, CardFooter } from './ui/card';
 import { Badge } from './ui/badge';
 import { ImageWithFallback } from './figma/ImageWithFallback';
 import { Star, Settings, Fuel, Calendar, Heart } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import type { Motorcycle } from '../App';
 
 interface MotorcycleCardProps {
@@ -14,6 +15,45 @@ interface MotorcycleCardProps {
 
 export function MotorcycleCard({ motorcycle, onDetails, onReserve }: MotorcycleCardProps) {
   const [isFavorited, setIsFavorited] = useState(false);
+
+  // Check if motorcycle is already in favorites on mount
+  useEffect(() => {
+    const savedFavorites = localStorage.getItem('favoritedMotorcycles');
+    if (savedFavorites) {
+      const favorites = JSON.parse(savedFavorites);
+      setIsFavorited(favorites.some((m: Motorcycle) => m.id === motorcycle.id));
+    }
+  }, [motorcycle.id]);
+
+  const handleFavoriteToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    try {
+      const savedFavorites = localStorage.getItem('favoritedMotorcycles');
+      let favorites: Motorcycle[] = savedFavorites ? JSON.parse(savedFavorites) : [];
+      
+      if (isFavorited) {
+        // Remove from favorites
+        favorites = favorites.filter(m => m.id !== motorcycle.id);
+        setIsFavorited(false);
+        toast.success('Removed from favorites');
+      } else {
+        // Add to favorites
+        if (!favorites.some(m => m.id === motorcycle.id)) {
+          favorites.push(motorcycle);
+        }
+        setIsFavorited(true);
+        toast.success('Added to favorites');
+      }
+      
+      localStorage.setItem('favoritedMotorcycles', JSON.stringify(favorites));
+      // Trigger storage event for other tabs/windows
+      window.dispatchEvent(new Event('storage'));
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+      toast.error('Failed to update favorites');
+    }
+  };
 
   const getAvailabilityBadge = () => {
     const variants = {
@@ -53,17 +93,14 @@ export function MotorcycleCard({ motorcycle, onDetails, onReserve }: MotorcycleC
         
         {/* Favorite Heart - Top Right Corner */}
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            setIsFavorited(!isFavorited);
-          }}
+          onClick={handleFavoriteToggle}
           className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center hover:bg-white transition-colors shadow-sm"
         >
           <Heart
             className={`w-4 h-4 transition-colors ${
               isFavorited 
                 ? 'fill-red-500 text-red-500' 
-                : 'text-gray-600 hover:text-red-500'
+                : 'text-muted-foreground hover:text-red-500'
             }`}
           />
         </button>

@@ -1,4 +1,4 @@
-import { Bike, Menu, User, Calendar, CreditCard, LogOut, Search, Bell, CheckCircle, XCircle, Trash2, Settings } from 'lucide-react';
+import { Bike, Menu, User, Calendar, CreditCard, LogOut, Search, Bell, CheckCircle, XCircle, Trash2, Settings, Heart, MessageCircle } from 'lucide-react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -305,13 +305,19 @@ export function Header({ user, isGuest, currentPage, navigate, logout, hideSearc
                       <User className="w-4 h-4 mr-2" />
                       Profile
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => navigate('reservations')} className="font-body">
-                      <Calendar className="w-4 h-4 mr-2" />
-                      My Reservations
+                    <DropdownMenuItem onClick={() => navigate('edit-profile')} className="font-body">
+                      <User className="w-4 h-4 mr-2" />
+                      Edit Profile
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => navigate('transactions')} className="font-body">
-                      <CreditCard className="w-4 h-4 mr-2" />
-                      Rental History
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => navigate('favorites')} className="font-body">
+                      <Heart className="w-4 h-4 mr-2" />
+                      My Favorites
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => navigate('help-support')} className="font-body">
+                      <MessageCircle className="w-4 h-4 mr-2" />
+                      Help & Support
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => navigate('settings')} className="font-body">

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, CheckCircle, Calendar, Star, Settings, Fuel, Palette, Gauge, Zap, User as UserIcon, LogIn, Shield, Clock, MapPin, PhoneCall, FileText, AlertCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Calendar, Star, Settings, Fuel, Palette, Gauge, Zap, User as UserIcon, LogIn, Shield, Clock, MapPin, PhoneCall, FileText, AlertCircle, Heart } from 'lucide-react';
 import { Button } from './ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
@@ -19,6 +19,32 @@ interface MotorcycleDetailsPageProps {
 
 export function MotorcycleDetailsPage({ motorcycle, navigate, user, isGuest, initiateReservation }: MotorcycleDetailsPageProps) {
   const [showGuestModal, setShowGuestModal] = useState(false);
+  const [isFavorited, setIsFavorited] = useState(() => {
+    const savedFavorites = localStorage.getItem('favoritedMotorcycles');
+    if (savedFavorites) {
+      const favorites = JSON.parse(savedFavorites);
+      return favorites.some((m: Motorcycle) => m.id === motorcycle.id);
+    }
+    return false;
+  });
+
+  const toggleFavorite = () => {
+    try {
+      const savedFavorites = localStorage.getItem('favoritedMotorcycles');
+      let favorites: Motorcycle[] = savedFavorites ? JSON.parse(savedFavorites) : [];
+
+      if (isFavorited) {
+        favorites = favorites.filter(m => m.id !== motorcycle.id);
+      } else {
+        favorites.push(motorcycle);
+      }
+
+      localStorage.setItem('favoritedMotorcycles', JSON.stringify(favorites));
+      setIsFavorited(!isFavorited);
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+    }
+  };
 
   const handleReserve = () => {
     if (isGuest) {
@@ -161,7 +187,7 @@ export function MotorcycleDetailsPage({ motorcycle, navigate, user, isGuest, ini
                       className={`w-5 h-5 ${
                         i < Math.floor(motorcycle.rating)
                           ? 'fill-yellow-400 text-yellow-400'
-                          : 'text-gray-300'
+                          : 'text-muted-foreground'
                       }`}
                     />
                   ))}
@@ -303,7 +329,7 @@ export function MotorcycleDetailsPage({ motorcycle, navigate, user, isGuest, ini
                       </div>
                       <div className="flex justify-between items-center p-3 rounded-lg bg-muted/30">
                         <span className="font-body text-muted-foreground">Security Deposit</span>
-                        <span className="font-body font-semibold text-foreground">₱{motorcycle.pricePerDay * 2}</span>
+                        <span className="font-body font-semibold text-foreground">₱{Math.round(motorcycle.pricePerDay * 0.2)}</span>
                       </div>
                       <div className="flex justify-between items-center p-3 rounded-lg bg-muted/30">
                         <span className="font-body text-muted-foreground">Minimum Rental</span>
@@ -391,15 +417,6 @@ export function MotorcycleDetailsPage({ motorcycle, navigate, user, isGuest, ini
                           </li>
                         </ul>
                       </div>
-                      
-                      <Separator />
-                      
-                      <div>
-                        <h4 className="font-heading font-semibold text-foreground mb-2">Cancellation Policy</h4>
-                        <p className="font-body text-muted-foreground text-sm leading-relaxed">
-                          Free cancellation up to 24 hours before pickup. Cancellations within 24 hours are subject to a 50% charge. No-shows forfeit the full deposit.
-                        </p>
-                      </div>
                     </div>
                   </TabsContent>
                 </CardContent>
@@ -419,6 +436,16 @@ export function MotorcycleDetailsPage({ motorcycle, navigate, user, isGuest, ini
                   ? `${motorcycle.availability}` 
                   : 'Reserve Now'
                 }
+              </Button>
+              
+              <Button
+                onClick={toggleFavorite}
+                variant={isFavorited ? "default" : "outline"}
+                size="lg"
+                className="w-full gap-2"
+              >
+                <Heart className={`w-5 h-5 ${isFavorited ? 'fill-current' : ''}`} />
+                {isFavorited ? 'Remove from Favorites' : 'Add to Favorites'}
               </Button>
               
               {motorcycle.availability !== 'Available' && (
