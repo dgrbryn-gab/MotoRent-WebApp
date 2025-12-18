@@ -26,6 +26,7 @@ import { AdminMotorcycles } from './components/admin/AdminMotorcycles';
 import { AdminReservations } from './components/admin/AdminReservations';
 import { AdminUsers } from './components/admin/AdminUsers';
 import { AdminTransactions } from './components/admin/AdminTransactions';
+import { AdminMessages } from './components/admin/AdminMessages';
 import { AdminGPSTracking } from './components/admin/AdminGPSTracking';
 import { AdminSidebar } from './components/admin/AdminSidebar';
 import { Toaster } from './components/ui/sonner';
@@ -40,7 +41,7 @@ export interface Notification {
   timestamp: string;
 }
 
-export type Page = 'landing' | 'login' | 'signup' | 'home' | 'details' | 'booking' | 'reservations' | 'transactions' | 'profile' | 'settings' | 'admin-login' | 'admin-dashboard' | 'admin-motorcycles' | 'admin-reservations' | 'admin-users' | 'admin-transactions' | 'admin-gps' | 'admin-settings';
+export type Page = 'landing' | 'login' | 'signup' | 'home' | 'details' | 'booking' | 'reservations' | 'transactions' | 'profile' | 'settings' | 'admin-login' | 'admin-dashboard' | 'admin-motorcycles' | 'admin-reservations' | 'admin-users' | 'admin-transactions' | 'admin-messages' | 'admin-gps' | 'admin-settings';
 
 export interface User {
   id: string;
@@ -544,6 +545,10 @@ export default function App() {
 
             {currentPage === 'admin-users' && adminUser && (
               <AdminUsers users={users} />
+            )}
+
+            {currentPage === 'admin-messages' && adminUser && (
+              <AdminMessages />
             )}
 
             {currentPage === 'admin-transactions' && adminUser && (

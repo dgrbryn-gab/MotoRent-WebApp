@@ -19,6 +19,7 @@ import { motorcycleService } from '../services/motorcycleService';
 import { emailService } from '../services/emailService';
 import { userService } from '../services/userService';
 import { documentService } from '../services/documentService';
+import { createPaymentIntent } from '../services/paymentService';
 import type { Page, Motorcycle, User } from '../App';
 import { format } from 'date-fns';
 

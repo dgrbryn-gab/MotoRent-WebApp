@@ -201,7 +201,7 @@ export function OTPVerification({ email, onVerified, onBack, navigate }: OTPVeri
 
   if (isVerified) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-4">
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="w-full max-w-md p-8 text-center shadow-xl">
           <div className="mb-6">
             <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
@@ -221,7 +221,7 @@ export function OTPVerification({ email, onVerified, onBack, navigate }: OTPVeri
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Card className="w-full max-w-md p-8 space-y-6 shadow-xl">
         {/* Header */}
         <div className="flex items-center space-x-4">
@@ -262,7 +262,7 @@ export function OTPVerification({ email, onVerified, onBack, navigate }: OTPVeri
                 onChange={(e) => handleOtpChange(index, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(index, e)}
                 onPaste={handlePaste}
-                className="w-12 h-12 text-center text-xl font-bold bg-white text-gray-900 border-2 border-gray-300 rounded-md focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none transition-all disabled:bg-gray-100 disabled:cursor-not-allowed"
+                className="w-12 h-12 text-center text-xl font-bold bg-input text-foreground border-2 border-input rounded-md focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none transition-all disabled:bg-muted disabled:cursor-not-allowed"
                 disabled={isVerifying}
                 autoComplete="off"
                 style={{ 

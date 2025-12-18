@@ -30,6 +30,7 @@ import { Card, CardContent } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
+import { toast } from "sonner";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { motorcycleService } from "../services/motorcycleService";
 import type { Page, Motorcycle, User } from "../App";
@@ -155,6 +156,12 @@ export function LandingPage({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [motorcycles, setMotorcycles] = useState<Motorcycle[]>([]);
   const [loading, setLoading] = useState(true);
+  const [contactForm, setContactForm] = useState({
+    name: '',
+    email: '',
+    message: ''
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Load featured motorcycles on mount
   useEffect(() => {
@@ -183,10 +190,49 @@ export function LandingPage({
     setIsMenuOpen(false);
   };
 
+  const handleContactSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!contactForm.name || !contactForm.email || !contactForm.message) {
+      toast.error('Please fill in all fields');
+      return;
+    }
+
+    setIsSubmitting(true);
+    
+    try {
+      // Save message to database
+      const contactService = await import('../services/contactService').then(m => m.contactService);
+      await contactService.createMessage({
+        name: contactForm.name,
+        email: contactForm.email,
+        message: contactForm.message
+      });
+
+      // Send contact message via email service
+      const emailService = await import('../services/emailService').then(m => m.emailService);
+      
+      await emailService.sendContactMessage({
+        name: contactForm.name,
+        email: contactForm.email,
+        message: contactForm.message,
+        timestamp: new Date().toISOString()
+      });
+      
+      toast.success('Message sent successfully! We\'ll get back to you soon.');
+      setContactForm({ name: '', email: '', message: '' });
+    } catch (error: any) {
+      console.error('Failed to send message:', error);
+      toast.error(error.message || 'Failed to send message. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-background">
       {/* Navigation Bar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white border-b border-border">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-card border-b border-border">
         <div className="container-custom">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
@@ -253,7 +299,7 @@ export function LandingPage({
 
         {/* Mobile Menu */}
         {isMenuOpen && (
-          <div className="md:hidden bg-white border-t border-border">
+          <div className="md:hidden bg-card border-t border-border">
             <div className="container-custom py-4 space-y-4">
               <button
                 onClick={() => scrollToSection("motorcycles")}
@@ -316,7 +362,7 @@ export function LandingPage({
       {/* Hero Section */}
       <section
         id="hero"
-        className="relative min-h-screen flex items-center bg-white overflow-hidden pt-16"
+        className="relative min-h-screen flex items-center bg-background overflow-hidden pt-16"
       >
         {/* Diagonal Background Shape */}
         <div className="absolute top-0 right-0 w-2/3 h-full">
@@ -328,9 +374,9 @@ export function LandingPage({
             {/* Left Content */}
             <div className="space-y-6 lg:pr-12">
               {/* Main Heading */}
-              <h1 className="md:text-5xl lg:text-6xl font-heading font-bold text-primary leading-tight text-[64px] mt-[0px] mr-[0px] mb-[60px] ml-[0px]">
+              <h1 className="md:text-5xl lg:text-6xl font-heading font-bold text-foreground leading-tight text-[64px] mt-[0px] mr-[0px] mb-[60px] ml-[0px]">
                 Discover the Best{" "}
-                <span className="text-accent text-[96px]">
+                <span className="text-foreground text-[96px]">
                   Motorcycle Rental Deals
                 </span>{" "}
                 in Dumaguete
@@ -576,7 +622,7 @@ export function LandingPage({
                     Send us a Message
                   </h3>
 
-                  <form className="space-y-6">
+                  <form onSubmit={handleContactSubmit} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div>
                         <label className="block text-sm font-body font-semibold text-foreground mb-2">
@@ -585,6 +631,9 @@ export function LandingPage({
                         <Input
                           placeholder="Your full name"
                           className="bg-input border-border"
+                          value={contactForm.name}
+                          onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })}
+                          required
                         />
                       </div>
                       <div>
@@ -595,6 +644,9 @@ export function LandingPage({
                           type="email"
                           placeholder="your.email@example.com"
                           className="bg-input border-border"
+                          value={contactForm.email}
+                          onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })}
+                          required
                         />
                       </div>
                     </div>
@@ -607,15 +659,28 @@ export function LandingPage({
                         placeholder="How can we help you?"
                         rows={5}
                         className="bg-input border-border"
+                        value={contactForm.message}
+                        onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })}
+                        required
                       />
                     </div>
 
                     <Button
                       type="submit"
                       className="w-full bg-primary hover:bg-primary-dark btn-hover"
+                      disabled={isSubmitting}
                     >
-                      <Send className="w-4 h-4 mr-2" />
-                      Send Message
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-4 h-4 mr-2" />
+                          Send Message
+                        </>
+                      )}
                     </Button>
                   </form>
                 </CardContent>

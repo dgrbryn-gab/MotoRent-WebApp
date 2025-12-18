@@ -208,28 +208,53 @@ export const adminService = {
 
   // Get top motorcycles by rental count
   async getTopMotorcyclesByRentals(limit: number = 5) {
-    const { data, error } = await supabase
-      .from('reservations')
-      .select('motorcycle_id, motorcycles(name, hourly_rate)')
-      .eq('status', 'completed');
+    try {
+      const { data, error } = await supabase
+        .from('reservations')
+        .select('motorcycle_id, status')
+        .eq('status', 'completed');
 
-    if (error) throw error;
+      if (error) throw error;
 
-    const motorcycles = data || [];
-    const grouped: Record<string, { name: string; count: number; rate: number }> = {};
-    
-    motorcycles.forEach((r: any) => {
-      const id = r.motorcycle_id;
-      if (!grouped[id]) {
-        grouped[id] = { name: r.motorcycles?.name || 'Unknown', count: 0, rate: r.motorcycles?.hourly_rate || 0 };
+      const reservations = data || [];
+      
+      // Group by motorcycle_id
+      const grouped: Record<string, number> = {};
+      reservations.forEach((r: any) => {
+        const id = r.motorcycle_id;
+        grouped[id] = (grouped[id] || 0) + 1;
+      });
+
+      // Get top motorcycles
+      const topIds = Object.entries(grouped)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit)
+        .map(([id]) => id);
+
+      if (topIds.length === 0) {
+        return [];
       }
-      grouped[id].count++;
-    });
 
-    return Object.values(grouped)
-      .sort((a, b) => b.count - a.count)
-      .slice(0, limit)
-      .map(m => ({ name: m.name, value: m.count }));
+      // Fetch motorcycle details
+      const { data: motorcycles, error: motoError } = await supabase
+        .from('motorcycles')
+        .select('id, name')
+        .in('id', topIds);
+
+      if (motoError) throw motoError;
+
+      // Map back with counts
+      return topIds.map(id => {
+        const moto = motorcycles?.find((m: any) => m.id === id);
+        return {
+          name: moto?.name || 'Unknown',
+          value: grouped[id]
+        };
+      });
+    } catch (error) {
+      console.error('Error fetching top motorcycles:', error);
+      return [];
+    }
   },
 
   // Get daily reservation count for last 30 days

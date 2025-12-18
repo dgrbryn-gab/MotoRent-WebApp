@@ -10,6 +10,7 @@ const EMAIL_SERVICE = (import.meta as any).env?.VITE_EMAIL_SERVICE || 'resend'; 
 const EMAIL_API_KEY = (import.meta as any).env?.VITE_EMAIL_API_KEY || '';
 const EMAIL_FROM = (import.meta as any).env?.VITE_EMAIL_FROM || 'otp@motorent.com';
 const RESEND_DOMAIN = (import.meta as any).env?.VITE_RESEND_DOMAIN || '';
+const APP_URL = (import.meta as any).env?.VITE_APP_URL || 'http://localhost:5173';
 
 // Email Templates
 const emailTemplates = {
@@ -485,6 +486,67 @@ const emailTemplates = {
       </html>
     `,
     text: `Payment Reminder\n\nHi ${data.userName},\n\nPayment due for ${data.motorcycleName}\nAmount: ₱${data.amount.toLocaleString()}\nDue: ${data.dueDate}\n\nView details: ${APP_URL}/reservations`
+  }),
+
+  contactMessage: (data: {
+    name: string;
+    email: string;
+    message: string;
+  }) => ({
+    subject: '📧 New Contact Message - MotoRent Dumaguete',
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #ff7a00 0%, #e66e00 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .card { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+          .detail-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
+          .detail-label { font-weight: bold; color: #555; }
+          .message-box { background: #f0f0f0; padding: 15px; border-left: 4px solid #ff7a00; margin: 15px 0; border-radius: 4px; font-style: italic; }
+          .footer { text-align: center; color: #999; font-size: 0.9em; margin-top: 30px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>📧 New Contact Message</h1>
+            <p>From MotoRent Dumaguete Website</p>
+          </div>
+          <div class="content">
+            <p>You have received a new contact message from a visitor:</p>
+            
+            <div class="card">
+              <div class="detail-row">
+                <span class="detail-label">Name:</span>
+                <span>${data.name}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Email:</span>
+                <span>${data.email}</span>
+              </div>
+            </div>
+
+            <p><strong>Message:</strong></p>
+            <div class="message-box">
+              ${data.message.replace(/\n/g, '<br>')}
+            </div>
+
+            <p style="color: #999; font-size: 0.9em; margin-top: 30px;">
+              <strong>Note:</strong> This is an automated notification. Please reply directly to the sender's email address to respond.
+            </p>
+          </div>
+          <div class="footer">
+            <p>MotoRent Dumaguete</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+    text: `New Contact Message\n\nName: ${data.name}\nEmail: ${data.email}\n\nMessage:\n${data.message}`
   })
 };
 
@@ -702,6 +764,76 @@ export const emailService = {
       '✅ Email Test - MotoRent',
       '<h1>Email Configuration Test</h1><p>If you\'re seeing this, your email service is working correctly! 🎉</p>',
       'Email Configuration Test\n\nIf you\'re seeing this, your email service is working correctly!'
+    );
+  },
+
+  // Send contact message from website form
+  async sendContactMessage(data: {
+    name: string;
+    email: string;
+    message: string;
+    timestamp: string;
+  }) {
+    // Send to admin
+    const adminEmail = (import.meta as any).env?.VITE_ADMIN_EMAIL || 'admin@motorent.com';
+    const template = emailTemplates.contactMessage({
+      name: data.name,
+      email: data.email,
+      message: data.message
+    });
+    
+    await sendEmail(
+      adminEmail,
+      template.subject,
+      template.html,
+      template.text
+    );
+
+    // Send confirmation to user
+    return sendEmail(
+      data.email,
+      '✅ We Received Your Message - MotoRent Dumaguete',
+      `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+            .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+            .header { background: linear-gradient(135deg, #ff7a00 0%, #e66e00 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+            .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+            .card { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; }
+            .footer { text-align: center; color: #999; font-size: 0.9em; margin-top: 30px; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>✅ Message Received!</h1>
+            </div>
+            <div class="content">
+              <p>Hi ${data.name},</p>
+              <p>Thank you for reaching out to MotoRent Dumaguete! We've received your message and will get back to you as soon as possible.</p>
+              
+              <div class="card">
+                <p><strong>Your Message Reference:</strong></p>
+                <p style="color: #ff7a00; font-size: 1.2em; font-weight: bold;">${data.timestamp}</p>
+              </div>
+
+              <p>Our team typically responds within 24 hours. If your inquiry is urgent, feel free to call us.</p>
+              
+              <p>Thank you for choosing MotoRent!</p>
+              <p>Best regards,<br/>The MotoRent Team 🏍️</p>
+            </div>
+            <div class="footer">
+              <p>MotoRent Dumaguete</p>
+              <p>Your Trusted Motorcycle Rental</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      `Message Received!\n\nHi ${data.name},\n\nThank you for contacting MotoRent Dumaguete! We've received your message and will respond within 24 hours.\n\nMessage Reference: ${data.timestamp}\n\nBest regards,\nThe MotoRent Team`
     );
   }
 };

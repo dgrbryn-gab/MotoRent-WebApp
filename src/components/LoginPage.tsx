@@ -19,11 +19,8 @@ export function LoginPage({ navigate, login, adminLogin }: LoginPageProps) {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
-  const [showResendDialog, setShowResendDialog] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
-  const [resendEmail, setResendEmail] = useState('');
   const [isResetting, setIsResetting] = useState(false);
-  const [isResending, setIsResending] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -93,31 +90,8 @@ export function LoginPage({ navigate, login, adminLogin }: LoginPageProps) {
     }
   };
 
-  const handleResendVerification = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!resendEmail) {
-      toast.error('Please enter your email');
-      return;
-    }
-
-    setIsResending(true);
-    
-    try {
-      await authService.resendVerificationEmail(resendEmail);
-      toast.success('Verification email sent! Check your inbox.');
-      setShowResendDialog(false);
-      setResendEmail('');
-    } catch (error: any) {
-      console.error('Resend verification failed:', error);
-      toast.error(error.message || 'Failed to send verification email. Please try again.');
-    } finally {
-      setIsResending(false);
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Card className="w-full max-w-md p-8 space-y-6 shadow-xl">
         {/* Logo */}
         <div className="flex items-center justify-center gap-3 mb-2 cursor-pointer" onClick={() => navigate('landing')}>
@@ -189,18 +163,10 @@ export function LoginPage({ navigate, login, adminLogin }: LoginPageProps) {
               <Button
                 type="button"
                 variant="ghost"
-                className="flex-1 text-muted-foreground text-sm"
+                className="text-muted-foreground text-sm"
                 onClick={() => setShowResetDialog(true)}
               >
                 Forgot Password?
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                className="flex-1 text-muted-foreground text-sm"
-                onClick={() => setShowResendDialog(true)}
-              >
-                Resend Verification
               </Button>
             </div>
           </div>
@@ -265,61 +231,6 @@ export function LoginPage({ navigate, login, adminLogin }: LoginPageProps) {
                     </>
                   ) : (
                     'Send Reset Link'
-                  )}
-                </Button>
-              </div>
-            </form>
-          </Card>
-        </div>
-      )}
-
-      {/* Resend Verification Dialog */}
-      {showResendDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <Card className="w-full max-w-md p-6 space-y-4">
-            <h2 className="text-xl font-semibold">Resend Verification Email</h2>
-            <p className="text-sm text-muted-foreground">
-              Enter your email address and we'll send you a new verification link.
-            </p>
-            
-            <form onSubmit={handleResendVerification} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="resendEmail">Email</Label>
-                <Input
-                  id="resendEmail"
-                  type="email"
-                  placeholder="Enter your email"
-                  value={resendEmail}
-                  onChange={(e) => setResendEmail(e.target.value)}
-                  required
-                />
-              </div>
-              
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => {
-                    setShowResendDialog(false);
-                    setResendEmail('');
-                  }}
-                  disabled={isResending}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="submit"
-                  className="flex-1"
-                  disabled={isResending}
-                >
-                  {isResending ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Sending...
-                    </>
-                  ) : (
-                    'Send Verification'
                   )}
                 </Button>
               </div>

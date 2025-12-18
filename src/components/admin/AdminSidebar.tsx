@@ -11,9 +11,12 @@ import {
   Menu,
   MapPin,
   Users,
+  MessageSquare,
   Settings
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { contactService } from '../../services/contactService';
+import { supabase } from '../../lib/supabase';
 
 interface AdminSidebarProps {
   adminUser: AdminUser;
@@ -25,12 +28,49 @@ interface AdminSidebarProps {
 export function AdminSidebar({ adminUser, currentPage, navigate, logout }: AdminSidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [newMessageCount, setNewMessageCount] = useState(0);
+
+  // Fetch new message count
+  useEffect(() => {
+    const fetchMessageCount = async () => {
+      try {
+        const messages = await contactService.getAllMessages();
+        const newCount = messages.filter(msg => msg.status === 'new').length;
+        setNewMessageCount(newCount);
+      } catch (error) {
+        console.error('Error fetching message count:', error);
+      }
+    };
+
+    fetchMessageCount();
+
+    // Subscribe to real-time updates
+    const subscription = supabase
+      .channel('contact_messages')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'contact_messages'
+        },
+        () => {
+          fetchMessageCount(); // Refetch count when messages change
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const navItems = [
     { id: 'admin-dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'admin-motorcycles', label: 'Motorcycles', icon: Bike },
     { id: 'admin-reservations', label: 'Reservations', icon: Calendar },
     { id: 'admin-users', label: 'Users', icon: Users },
+    { id: 'admin-messages', label: 'Messages', icon: MessageSquare },
     { id: 'admin-transactions', label: 'Transactions', icon: FileCheck },
     { id: 'admin-gps', label: 'GPS Tracking', icon: MapPin },
     { id: 'admin-settings', label: 'Settings', icon: Settings },
@@ -110,13 +150,14 @@ export function AdminSidebar({ adminUser, currentPage, navigate, logout }: Admin
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentPage === item.id;
+              const isMessagesItem = item.id === 'admin-messages';
               
               return (
                 <button
                   key={item.id}
                   onClick={() => handleNavigation(item.id as Page)}
                   className={`
-                    w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200
+                    w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 relative
                     ${isActive
                       ? 'bg-primary text-primary-foreground shadow-sm'
                       : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
@@ -127,7 +168,19 @@ export function AdminSidebar({ adminUser, currentPage, navigate, logout }: Admin
                 >
                   <Icon className="w-5 h-5 flex-shrink-0" />
                   {!isCollapsed && (
-                    <span className="font-medium">{item.label}</span>
+                    <div className="flex items-center justify-between flex-1">
+                      <span className="font-medium">{item.label}</span>
+                      {isMessagesItem && newMessageCount > 0 && (
+                        <div className="flex items-center justify-center min-w-[24px] h-6 px-2 bg-accent text-white rounded-full text-xs font-bold">
+                          {newMessageCount}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {isCollapsed && isMessagesItem && newMessageCount > 0 && (
+                    <div className="absolute -top-1 -right-1 flex items-center justify-center w-5 h-5 bg-accent text-white text-xs rounded-full font-bold">
+                      {newMessageCount}
+                    </div>
                   )}
                 </button>
               );

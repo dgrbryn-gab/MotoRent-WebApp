@@ -55,7 +55,7 @@ export function AdminLoginPage({ navigate, adminLogin }: AdminLoginPageProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 to-accent/5 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Back to Main Site */}
         <div className="mb-6">
@@ -68,7 +68,7 @@ export function AdminLoginPage({ navigate, adminLogin }: AdminLoginPageProps) {
           </button>
         </div>
 
-        <Card className="shadow-xl border-0 bg-white/80 backdrop-blur-sm">
+        <Card className="shadow-xl border-0 bg-card">
           <CardHeader className="text-center space-y-4">
             {/* Logo */}
             <div className="flex items-center justify-center gap-3 cursor-pointer" onClick={() => navigate('landing')}>

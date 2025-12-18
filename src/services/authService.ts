@@ -22,7 +22,7 @@ const generateOTP = (): string => {
  * Persistent across server restarts and scalable for distributed deployments
  */
 const storeOTP = async (email: string, code: string): Promise<void> => {
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // 10 minutes
+  const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString(); // 30 minutes
   
   try {
     // First, delete any existing OTP for this email
@@ -126,7 +126,7 @@ const sendOTPViaResend = async (email: string, otp: string): Promise<void> => {
             
             <div class="otp-box">
               <div class="otp-code">${otp}</div>
-              <div class="otp-note">Valid for 10 minutes</div>
+              <div class="otp-note">Valid for 30 minutes</div>
             </div>
 
             <p>Enter this code in the app to verify your email address and complete your signup.</p>

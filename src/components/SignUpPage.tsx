@@ -107,7 +107,7 @@ export function SignUpPage({ navigate, login }: SignUpPageProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <Card className="w-full max-w-md p-8 space-y-6 shadow-xl">
         {/* Logo */}
         <div className="flex items-center justify-center gap-3 mb-2 cursor-pointer" onClick={() => navigate('landing')}>
