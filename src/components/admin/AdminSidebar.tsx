@@ -44,24 +44,39 @@ export function AdminSidebar({ adminUser, currentPage, navigate, logout }: Admin
 
     fetchMessageCount();
 
-    // Subscribe to real-time updates
-    const subscription = supabase
-      .channel('contact_messages')
+    // Subscribe to real-time updates for message status changes
+    const channel = supabase
+      .channel('contact_messages_changes')
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'contact_messages'
+        },
+        (payload) => {
+          // When a message status changes, refetch the count
+          if (payload.new?.status !== payload.old?.status) {
+            fetchMessageCount();
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
           schema: 'public',
           table: 'contact_messages'
         },
         () => {
-          fetchMessageCount(); // Refetch count when messages change
+          // When a new message is inserted, refetch the count
+          fetchMessageCount();
         }
       )
       .subscribe();
 
     return () => {
-      subscription.unsubscribe();
+      channel.unsubscribe();
     };
   }, []);
 
@@ -113,7 +128,7 @@ export function AdminSidebar({ adminUser, currentPage, navigate, logout }: Admin
           <div className="p-6 border-b border-border">
             <div className="flex items-center justify-between">
               {!isCollapsed && (
-                <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('landing')}>
+                <div className="flex items-center gap-3">
                   <div className="w-10 h-10 bg-gradient-primary rounded-lg flex items-center justify-center">
                     <span className="text-white font-heading font-bold text-lg">M</span>
                   </div>
@@ -130,7 +145,7 @@ export function AdminSidebar({ adminUser, currentPage, navigate, logout }: Admin
               )}
               
               {isCollapsed && (
-                <div className="w-10 h-10 bg-gradient-primary rounded-lg flex items-center justify-center mx-auto cursor-pointer" onClick={() => navigate('landing')}>
+                <div className="w-10 h-10 bg-gradient-primary rounded-lg flex items-center justify-center mx-auto">
                   <span className="text-white font-heading font-bold text-lg">M</span>
                 </div>
               )}

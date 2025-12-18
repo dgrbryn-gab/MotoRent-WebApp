@@ -3,6 +3,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
 import { Badge } from './ui/badge';
+import { useState } from 'react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -36,6 +37,8 @@ interface HeaderProps {
 }
 
 export function Header({ user, isGuest, currentPage, navigate, logout, hideSearchBar = false, searchTerm = '', onSearchChange, notifications = [], onNotificationClick, onMarkAllRead, onClearAll }: HeaderProps) {
+  const [isNotificationPopoverOpen, setIsNotificationPopoverOpen] = useState(false);
+
   const getInitials = (name: string) => {
     return name
       .split(' ')
@@ -79,7 +82,7 @@ export function Header({ user, isGuest, currentPage, navigate, logout, hideSearc
       <div className="container-custom h-16">
         <div className="flex h-full items-center justify-between gap-4">
           {/* Logo */}
-          <div className="flex items-center gap-2 cursor-pointer flex-shrink-0" onClick={() => navigate('landing')}>
+          <div className="flex items-center gap-2 cursor-pointer flex-shrink-0" onClick={() => window.location.reload()}>
             <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center">
               <Bike className="w-5 h-5 text-primary-foreground" />
             </div>
@@ -147,7 +150,7 @@ export function Header({ user, isGuest, currentPage, navigate, logout, hideSearc
                       currentPage === 'transactions' ? 'bg-accent/10 text-accent' : ''
                     }`}
                   >
-                    Transactions
+                    Rental History
                   </Button>
                 </>
               )}
@@ -169,7 +172,7 @@ export function Header({ user, isGuest, currentPage, navigate, logout, hideSearc
             ) : user ? (
               <div className="flex items-center gap-4">
                 {/* Notification Icon */}
-                <Popover>
+                <Popover open={isNotificationPopoverOpen} onOpenChange={setIsNotificationPopoverOpen}>
                   <PopoverTrigger asChild>
                     <Button variant="ghost" size="icon" className="relative btn-hover hover:bg-accent hover:text-accent-foreground">
                       <Bell className="w-5 h-5" />
@@ -222,6 +225,9 @@ export function Header({ user, isGuest, currentPage, navigate, logout, hideSearc
                             <button
                               key={notification.id}
                               onClick={() => {
+                                // Close the popover first
+                                setIsNotificationPopoverOpen(false);
+                                // Then handle the notification click
                                 if (onNotificationClick) {
                                   onNotificationClick(notification);
                                 }
@@ -305,7 +311,7 @@ export function Header({ user, isGuest, currentPage, navigate, logout, hideSearc
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => navigate('transactions')} className="font-body">
                       <CreditCard className="w-4 h-4 mr-2" />
-                      Transactions
+                      Rental History
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onClick={() => navigate('settings')} className="font-body">
@@ -340,7 +346,7 @@ export function Header({ user, isGuest, currentPage, navigate, logout, hideSearc
                         My Reservations
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => navigate('transactions')} className="font-body">
-                        Transactions
+                        Rental History
                       </DropdownMenuItem>
                     </>
                   )}

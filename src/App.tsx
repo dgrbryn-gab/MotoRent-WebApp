@@ -150,6 +150,7 @@ export default function App() {
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
 
   // Subscribe to real-time notifications
   useEffect(() => {
@@ -218,6 +219,11 @@ export default function App() {
               name: currentUser.name,
               email: currentUser.email,
               phone: currentUser.phone,
+              profile_picture_url: currentUser.profile_picture_url,
+              driver_license_url: currentUser.driver_license_url,
+              address: currentUser.address,
+              birthday: currentUser.birthday,
+              license_number: currentUser.license_number,
             });
             
             // Load notifications for the existing session
@@ -254,6 +260,11 @@ export default function App() {
             name: currentUser.name,
             email: currentUser.email,
             phone: currentUser.phone,
+            profile_picture_url: currentUser.profile_picture_url,
+            driver_license_url: currentUser.driver_license_url,
+            address: currentUser.address,
+            birthday: currentUser.birthday,
+            license_number: currentUser.license_number,
           });
           // Load notifications when auth state changes
           await loadUserNotifications(currentUser.id);
@@ -468,6 +479,8 @@ export default function App() {
   };
 
   const handleNotificationClick = (notification: Notification) => {
+    // Open the modal to show full notification
+    setSelectedNotification(notification);
     // Mark as read
     markNotificationAsRead(notification.id);
     // Navigate to reservations page
@@ -627,7 +640,7 @@ export default function App() {
         
         {currentPage === 'transactions' && (
           <TransactionsPage 
-            transactions={transactions}
+            reservations={reservations}
           />
         )}
         
@@ -656,6 +669,44 @@ export default function App() {
           )}
         </main>
       )}
+
+      {/* Notification Detail Modal */}
+      {selectedNotification && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+          <div className="bg-card border border-border rounded-lg max-w-md w-full shadow-xl">
+            <div className="p-6 border-b border-border flex items-start justify-between">
+              <h2 className="text-xl font-heading font-semibold text-foreground">Notification</h2>
+              <button
+                onClick={() => setSelectedNotification(null)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground mb-2">{selectedNotification.title}</h3>
+                <p className="text-foreground whitespace-pre-wrap">{selectedNotification.message}</p>
+              </div>
+              
+              <div className="text-sm text-muted-foreground">
+                {new Date(selectedNotification.timestamp).toLocaleString()}
+              </div>
+              
+              <div className="flex justify-end">
+                <button
+                  onClick={() => setSelectedNotification(null)}
+                  className="px-4 py-2 bg-primary hover:bg-primary-dark text-primary-foreground rounded-lg transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
       <Toaster richColors />
     </div>
   );

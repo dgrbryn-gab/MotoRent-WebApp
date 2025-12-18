@@ -547,6 +547,67 @@ const emailTemplates = {
       </html>
     `,
     text: `New Contact Message\n\nName: ${data.name}\nEmail: ${data.email}\n\nMessage:\n${data.message}`
+  }),
+
+  adminReply: (data: {
+    customerName: string;
+    originalMessage: string;
+    replyMessage: string;
+  }) => ({
+    subject: '📧 Response from MotoRent Dumaguete - Your Message',
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background: linear-gradient(135deg, #ff7a00 0%, #e66e00 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+          .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+          .card { background: white; padding: 20px; margin: 20px 0; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+          .original-message { background: #f0f0f0; padding: 15px; border-left: 4px solid #ccc; margin: 15px 0; border-radius: 4px; }
+          .original-label { font-weight: bold; color: #666; font-size: 0.9em; margin-bottom: 10px; }
+          .reply-message { background: #e8f5e9; padding: 15px; border-left: 4px solid #ff7a00; margin: 15px 0; border-radius: 4px; }
+          .reply-label { font-weight: bold; color: #2e7d32; margin-bottom: 10px; }
+          .footer { text-align: center; color: #999; font-size: 0.9em; margin-top: 30px; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>📧 We've Responded!</h1>
+            <p>Your MotoRent Inquiry Has Been Answered</p>
+          </div>
+          <div class="content">
+            <p>Hi ${data.customerName},</p>
+            <p>Thank you for reaching out to MotoRent Dumaguete. Here is our response to your message:</p>
+            
+            <div class="card">
+              <div class="original-message">
+                <div class="original-label">Your Original Message:</div>
+                <p style="margin: 0; color: #666;">${data.originalMessage.replace(/\n/g, '<br>')}</p>
+              </div>
+
+              <div class="reply-message">
+                <div class="reply-label">✅ Our Response:</div>
+                <p style="margin: 0;">${data.replyMessage.replace(/\n/g, '<br>')}</p>
+              </div>
+            </div>
+
+            <p>If you have any further questions, feel free to reply to this email or contact us directly.</p>
+            
+            <p>Thank you for choosing MotoRent Dumaguete!</p>
+            <p>Best regards,<br/><strong>The MotoRent Team 🏍️</strong></p>
+          </div>
+          <div class="footer">
+            <p>MotoRent Dumaguete - Your Trusted Motorcycle Rental</p>
+            <p>Dumaguete City, Philippines</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+    text: `Response from MotoRent Dumaguete\n\nHi ${data.customerName},\n\nThank you for contacting us. Here is our response:\n\n--- YOUR MESSAGE ---\n${data.originalMessage}\n\n--- OUR RESPONSE ---\n${data.replyMessage}\n\nIf you have further questions, feel free to reply to this email.\n\nBest regards,\nThe MotoRent Team`
   })
 };
 
@@ -834,6 +895,27 @@ export const emailService = {
         </html>
       `,
       `Message Received!\n\nHi ${data.name},\n\nThank you for contacting MotoRent Dumaguete! We've received your message and will respond within 24 hours.\n\nMessage Reference: ${data.timestamp}\n\nBest regards,\nThe MotoRent Team`
+    );
+  },
+
+  // Send admin reply to customer message
+  async sendAdminReply(data: {
+    customerEmail: string;
+    customerName: string;
+    originalMessage: string;
+    replyMessage: string;
+  }) {
+    const template = emailTemplates.adminReply({
+      customerName: data.customerName,
+      originalMessage: data.originalMessage,
+      replyMessage: data.replyMessage
+    });
+
+    return sendEmail(
+      data.customerEmail,
+      template.subject,
+      template.html,
+      template.text
     );
   }
 };

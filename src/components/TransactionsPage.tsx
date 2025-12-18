@@ -1,45 +1,22 @@
 import { useState } from 'react';
-import { CreditCard, DollarSign, RefreshCw, Filter } from 'lucide-react';
-import { Button } from './ui/button';
+import { Calendar, DollarSign, Bike, Filter } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Badge } from './ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Separator } from './ui/separator';
-import type { Transaction } from '../App';
+import { ImageWithFallback } from './figma/ImageWithFallback';
+import type { Reservation } from '../App';
 
 interface TransactionsPageProps {
-  transactions: Transaction[];
+  reservations?: Reservation[];
+  transactions?: any[];
 }
 
-export function TransactionsPage({ transactions }: TransactionsPageProps) {
-  const [filterType, setFilterType] = useState<string>('all');
-  const [filterStatus, setFilterStatus] = useState<string>('all-status');
-  const getTransactionIcon = (type: string) => {
-    switch (type) {
-      case 'payment':
-        return <CreditCard className="w-5 h-5 text-red-500" />;
-      case 'deposit':
-        return <DollarSign className="w-5 h-5 text-yellow-500" />;
-      case 'refund':
-        return <RefreshCw className="w-5 h-5 text-green-500" />;
-      default:
-        return <CreditCard className="w-5 h-5" />;
-    }
-  };
-
-  const getStatusBadge = (status: string) => {
-    const variants = {
-      completed: 'bg-green-100 text-green-800',
-      pending: 'bg-yellow-100 text-yellow-800',
-      failed: 'bg-red-100 text-red-800'
-    };
-    
-    return (
-      <Badge className={`${variants[status as keyof typeof variants]} border-0`}>
-        {status.charAt(0).toUpperCase() + status.slice(1)}
-      </Badge>
-    );
-  };
+export function TransactionsPage({ reservations = [], transactions = [] }: TransactionsPageProps) {
+  // If we have reservations, use them for rental history; otherwise fall back to empty state
+  const rentalHistoryData = reservations || [];
+  
+  // Filter only completed reservations
+  const completedRentals = rentalHistoryData.filter(r => r.status === 'completed');
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -49,35 +26,23 @@ export function TransactionsPage({ transactions }: TransactionsPageProps) {
     });
   };
 
-  const formatAmount = (amount: number, type: string) => {
-    const sign = type === 'refund' ? '+' : '-';
-    return `${sign}₱${amount}`;
+  // Calculate total spent on completed rentals
+  const totalSpent = completedRentals.reduce((sum, rental) => sum + rental.totalPrice, 0);
+
+  // Calculate number of days rented
+  const calculateDays = (startDate: string, endDate: string) => {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    const diffTime = Math.abs(end.getTime() - start.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays || 1;
   };
-
-  // Filter transactions
-  const filteredTransactions = transactions.filter(t => {
-    const typeMatch = filterType === 'all' || t.type === filterType;
-    const statusMatch = filterStatus === 'all-status' || t.status === filterStatus;
-    return typeMatch && statusMatch;
-  });
-
-  const totalSpent = transactions
-    .filter(t => t.type === 'payment' && t.status === 'completed')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const totalRefunds = transactions
-    .filter(t => t.type === 'refund' && t.status === 'completed')
-    .reduce((sum, t) => sum + t.amount, 0);
-
-  const pendingAmount = transactions
-    .filter(t => t.status === 'pending')
-    .reduce((sum, t) => sum + t.amount, 0);
 
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="mb-8">
-        <h1 className="text-3xl text-primary mb-2">Transactions</h1>
-        <p className="text-muted-foreground">Track your payments, deposits, and refunds</p>
+        <h1 className="text-3xl text-primary mb-2">Rental History</h1>
+        <p className="text-muted-foreground">View all your completed motorcycle rentals</p>
       </div>
 
       {/* Summary Cards */}
@@ -86,11 +51,11 @@ export function TransactionsPage({ transactions }: TransactionsPageProps) {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total Spent</p>
-                <p className="text-2xl text-primary">₱{totalSpent}</p>
+                <p className="text-sm text-muted-foreground">Total Rentals</p>
+                <p className="text-2xl text-primary font-semibold">{completedRentals.length}</p>
               </div>
-              <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
-                <CreditCard className="w-6 h-6 text-red-600" />
+              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                <Bike className="w-6 h-6 text-blue-600" />
               </div>
             </div>
           </CardContent>
@@ -100,11 +65,11 @@ export function TransactionsPage({ transactions }: TransactionsPageProps) {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total Refunds</p>
-                <p className="text-2xl text-green-600">₱{totalRefunds}</p>
+                <p className="text-sm text-muted-foreground">Total Amount Spent</p>
+                <p className="text-2xl text-green-600 font-semibold">₱{totalSpent.toLocaleString()}</p>
               </div>
               <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
-                <RefreshCw className="w-6 h-6 text-green-600" />
+                <DollarSign className="w-6 h-6 text-green-600" />
               </div>
             </div>
           </CardContent>
@@ -114,112 +79,100 @@ export function TransactionsPage({ transactions }: TransactionsPageProps) {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Pending</p>
-                <p className="text-2xl text-yellow-600">₱{pendingAmount}</p>
+                <p className="text-sm text-muted-foreground">Average Rental Cost</p>
+                <p className="text-2xl text-orange-600 font-semibold">
+                  ₱{completedRentals.length > 0 ? Math.round(totalSpent / completedRentals.length).toLocaleString() : '0'}
+                </p>
               </div>
-              <div className="w-12 h-12 bg-yellow-100 rounded-full flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-yellow-600" />
+              <div className="w-12 h-12 bg-orange-100 rounded-full flex items-center justify-center">
+                <Calendar className="w-6 h-6 text-orange-600" />
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Filters and Actions */}
-      <Card className="mb-6">
-        <CardContent className="p-6">
-          <div className="flex flex-col sm:flex-row gap-4 items-center">
-            <Select value={filterType} onValueChange={setFilterType}>
-              <SelectTrigger className="w-48">
-                <Filter className="w-4 h-4 mr-2" />
-                <SelectValue placeholder="Filter by type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Transactions</SelectItem>
-                <SelectItem value="payment">Payments</SelectItem>
-                <SelectItem value="deposit">Deposits</SelectItem>
-                <SelectItem value="refund">Refunds</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={filterStatus} onValueChange={setFilterStatus}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder="Filter by status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all-status">All Status</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="pending">Pending</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Transactions List */}
+      {/* Rental History List */}
       <Card>
         <CardHeader>
-          <CardTitle>Transaction History</CardTitle>
+          <CardTitle>Completed Rentals</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
-          {filteredTransactions.length > 0 ? (
-            filteredTransactions.map((transaction, index) => (
-              <div key={transaction.id}>
-                <div className="p-6 hover:bg-muted/50 transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center">
-                        {getTransactionIcon(transaction.type)}
+          {completedRentals.length > 0 ? (
+            completedRentals.map((rental, index) => {
+              const daysRented = calculateDays(rental.startDate, rental.endDate);
+              return (
+                <div key={rental.id}>
+                  <div className="p-6 hover:bg-muted/50 transition-colors">
+                    <div className="flex gap-4">
+                      {/* Motorcycle Image */}
+                      <div className="w-24 h-24 rounded-lg overflow-hidden flex-shrink-0">
+                        <ImageWithFallback
+                          src={rental.motorcycle.image}
+                          alt={rental.motorcycle.name}
+                          className="w-full h-full object-cover"
+                        />
                       </div>
+
+                      {/* Rental Details */}
                       <div className="flex-1">
-                        <div className="flex items-center space-x-2 mb-1">
-                          <h3 className="font-medium capitalize">{transaction.type}</h3>
-                          {getStatusBadge(transaction.status)}
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <h3 className="font-semibold text-lg mb-1">{rental.motorcycle.name}</h3>
+                            <p className="text-sm text-muted-foreground mb-3">{rental.motorcycle.type}</p>
+                            
+                            <div className="grid grid-cols-2 gap-3 mb-2">
+                              <div>
+                                <p className="text-xs text-muted-foreground">Pick-up Date</p>
+                                <p className="text-sm font-medium">{formatDate(rental.startDate)}</p>
+                                {rental.pickupTime && (
+                                  <p className="text-xs text-muted-foreground">{rental.pickupTime}</p>
+                                )}
+                              </div>
+                              <div>
+                                <p className="text-xs text-muted-foreground">Return Date</p>
+                                <p className="text-sm font-medium">{formatDate(rental.endDate)}</p>
+                                {rental.returnTime && (
+                                  <p className="text-xs text-muted-foreground">{rental.returnTime}</p>
+                                )}
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-2">
+                              <Badge variant="secondary" className="text-xs">
+                                {daysRented} {daysRented === 1 ? 'day' : 'days'}
+                              </Badge>
+                              <Badge className="bg-green-100 text-green-800 border-0 text-xs">
+                                Completed
+                              </Badge>
+                            </div>
+                          </div>
+
+                          {/* Amount */}
+                          <div className="text-right">
+                            <p className="text-sm text-muted-foreground mb-1">Amount Paid</p>
+                            <p className="text-2xl font-bold text-green-600">₱{rental.totalPrice.toLocaleString()}</p>
+                            <p className="text-xs text-muted-foreground mt-2">💵 Cash</p>
+                          </div>
                         </div>
-                        <p className="text-sm text-muted-foreground line-clamp-1">
-                          {transaction.description}
-                        </p>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {formatDate(transaction.date)}
-                        </p>
                       </div>
-                    </div>
-                    <div className="text-right">
-                      <p className={`text-lg font-medium ${
-                        transaction.type === 'refund' ? 'text-green-600' : 'text-foreground'
-                      }`}>
-                        {formatAmount(transaction.amount, transaction.type)}
-                      </p>
                     </div>
                   </div>
+                  {index < completedRentals.length - 1 && <Separator />}
                 </div>
-                {index < filteredTransactions.length - 1 && <Separator />}
-              </div>
-            ))
+              );
+            })
           ) : (
             <div className="p-8 text-center">
-              <CreditCard className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-medium mb-2">No Transactions Found</h3>
+              <Bike className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium mb-2">No Completed Rentals</h3>
               <p className="text-muted-foreground">
-                {filterType !== 'all' || filterStatus !== 'all-status'
-                  ? 'No transactions match your filters. Try adjusting the filters above.'
-                  : 'Your transaction history will appear here.'}
+                Your completed rental history will appear here.
               </p>
             </div>
           )}
         </CardContent>
       </Card>
-
-      {transactions.length === 0 && (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <CreditCard className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-medium mb-2">No Transactions</h3>
-            <p className="text-muted-foreground">Your transaction history will appear here.</p>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

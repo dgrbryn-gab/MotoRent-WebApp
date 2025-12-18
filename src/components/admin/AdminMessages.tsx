@@ -12,9 +12,11 @@ import {
   Clock,
   Eye,
   Loader2,
-  X
+  X,
+  Send
 } from 'lucide-react';
 import { contactService, ContactMessage } from '../../services/contactService';
+import { emailService } from '../../services/emailService';
 import { toast } from 'sonner';
 
 export function AdminMessages() {
@@ -24,6 +26,8 @@ export function AdminMessages() {
   const [selectedMessage, setSelectedMessage] = useState<ContactMessage | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState<'all' | 'new' | 'read' | 'responded'>('all');
+  const [replyText, setReplyText] = useState('');
+  const [isSendingReply, setIsSendingReply] = useState(false);
 
   useEffect(() => {
     loadMessages();
@@ -89,6 +93,43 @@ export function AdminMessages() {
     } catch (error: any) {
       console.error('Error deleting message:', error);
       toast.error('Failed to delete message');
+    }
+  };
+
+  const handleSendReply = async () => {
+    if (!selectedMessage || !replyText.trim()) {
+      toast.error('Please enter a reply message');
+      return;
+    }
+
+    try {
+      setIsSendingReply(true);
+
+      // Save reply to database
+      await contactService.replyToMessage(selectedMessage.id, replyText);
+
+      // Send email to customer
+      await emailService.sendAdminReply({
+        customerEmail: selectedMessage.email,
+        customerName: selectedMessage.name,
+        originalMessage: selectedMessage.message,
+        replyMessage: replyText
+      });
+
+      // Update local state
+      const updatedMessage = { ...selectedMessage, reply_message: replyText, status: 'responded' as const };
+      setSelectedMessage(updatedMessage);
+      setMessages(messages.map(m => 
+        m.id === selectedMessage.id ? updatedMessage : m
+      ));
+      setReplyText('');
+
+      toast.success('Reply sent successfully!');
+    } catch (error: any) {
+      console.error('Error sending reply:', error);
+      toast.error('Failed to send reply');
+    } finally {
+      setIsSendingReply(false);
     }
   };
 
@@ -311,6 +352,36 @@ export function AdminMessages() {
                 </div>
               </div>
 
+              {selectedMessage.reply_message && (
+                <div>
+                  <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
+                    <CheckCircle className="w-4 h-4 text-success" />
+                    Your Reply
+                  </h3>
+                  <div className="bg-success/10 p-4 rounded-lg text-foreground whitespace-pre-wrap border-l-4 border-success">
+                    {selectedMessage.reply_message}
+                  </div>
+                  {selectedMessage.replied_at && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Replied on {new Date(selectedMessage.replied_at).toLocaleString()}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {!selectedMessage.reply_message && (
+                <div>
+                  <h3 className="font-semibold text-foreground mb-3">Send a Reply</h3>
+                  <textarea
+                    value={replyText}
+                    onChange={(e) => setReplyText(e.target.value)}
+                    placeholder="Type your reply message here..."
+                    className="w-full p-3 bg-input border border-border rounded-lg text-foreground placeholder-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary"
+                    rows={5}
+                  />
+                </div>
+              )}
+
               <div className="flex items-center gap-2">
                 <Badge
                   className={`text-xs ${
@@ -324,24 +395,34 @@ export function AdminMessages() {
               </div>
 
               <div className="flex gap-3 flex-wrap">
-                {selectedMessage.status !== 'responded' && (
+                {!selectedMessage.reply_message && (
+                  <Button
+                    onClick={handleSendReply}
+                    disabled={!replyText.trim() || isSendingReply}
+                    className="bg-success hover:bg-success/90"
+                  >
+                    {isSendingReply ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-4 h-4 mr-2" />
+                        Send Reply
+                      </>
+                    )}
+                  </Button>
+                )}
+                {selectedMessage.status !== 'responded' && !selectedMessage.reply_message && (
                   <Button
                     onClick={handleMarkAsResponded}
-                    className="bg-success hover:bg-success/90"
+                    className="bg-info hover:bg-info/90"
                   >
                     <CheckCircle className="w-4 h-4 mr-2" />
                     Mark as Responded
                   </Button>
                 )}
-                <Button
-                  onClick={() => {
-                    window.location.href = `mailto:${selectedMessage.email}`;
-                  }}
-                  variant="outline"
-                >
-                  <Mail className="w-4 h-4 mr-2" />
-                  Reply via Email
-                </Button>
                 <Button
                   onClick={() => handleDeleteMessage(selectedMessage.id)}
                   variant="destructive"

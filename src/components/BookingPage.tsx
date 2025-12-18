@@ -62,6 +62,9 @@ export function BookingPage({ motorcycle, navigate, user, addReservation, addTra
   const [emergencyContactName, setEmergencyContactName] = useState('');
   const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
   
+  // Track loaded user data (fresh from database)
+  const [loadedUser, setLoadedUser] = useState<User | null>(user);
+  
   // Reservation Details - simplified to just pickup date/time
   const [pickupDate, setPickupDate] = useState<Date | undefined>(undefined);
   const [pickupTime, setPickupTime] = useState('');
@@ -104,6 +107,9 @@ export function BookingPage({ motorcycle, navigate, user, addReservation, addTra
             setAddress(userProfile.address || '');
             setDateOfBirth(userProfile.birthday || '');
             setLicenseNumber(userProfile.license_number || '');
+            // Store the loaded user data to check for driver_license_url
+            setLoadedUser(userProfile);
+            console.log('✅ User profile loaded:', userProfile);
           }
         } catch (error) {
           console.error('Failed to load user profile:', error);
@@ -111,6 +117,84 @@ export function BookingPage({ motorcycle, navigate, user, addReservation, addTra
       }
     };
     loadUserProfile();
+    
+    // Set up an interval to refresh user data every 3 seconds
+    const refreshInterval = setInterval(loadUserProfile, 3000);
+    
+    return () => clearInterval(refreshInterval);
+  }, [user?.id]);
+
+  // Load user's previously uploaded documents
+  useEffect(() => {
+    const loadUserDocuments = async () => {
+      if (user?.id) {
+        try {
+          const userDocs = await documentService.getUserDocuments(user.id);
+          
+          // Start with default required documents
+          const defaultDocs: DocumentUpload[] = [
+            {
+              id: 'license',
+              name: "Driver's License",
+              file: null,
+              status: 'pending',
+              required: true,
+              description: 'Upload your driver\'s license',
+              uploadProgress: 0
+            }
+          ];
+
+          if (userDocs && userDocs.length > 0) {
+            // Map existing documents to the default structure
+            const existingDocMap: { [key: string]: any } = {};
+            userDocs.forEach(doc => {
+              const docKey = doc.document_type === 'driver-license' ? 'license' : 'id';
+              existingDocMap[docKey] = doc;
+            });
+
+            // Update default docs with existing data
+            const updatedDocs = defaultDocs.map(defaultDoc => {
+              const existingDoc = existingDocMap[defaultDoc.id];
+              if (existingDoc) {
+                return {
+                  ...defaultDoc,
+                  status: existingDoc.status === 'approved' ? 'verified' : (existingDoc.status as 'pending' | 'uploading' | 'analyzing' | 'verified' | 'rejected'),
+                  uploadProgress: existingDoc.status === 'approved' ? 100 : 0,
+                  rejectionReason: existingDoc.rejection_reason || undefined,
+                  extractedData: {
+                    documentType: existingDoc.document_type,
+                    expirationDate: existingDoc.status === 'approved' ? 'Verified by admin' : 'Pending verification',
+                    isExpired: false
+                  }
+                };
+              }
+              return defaultDoc;
+            });
+            
+            setDocuments(updatedDocs);
+            console.log('✅ Loaded user documents:', updatedDocs);
+          } else {
+            // No existing documents, use defaults
+            setDocuments(defaultDocs);
+          }
+        } catch (error) {
+          console.error('Failed to load user documents:', error);
+          // Initialize with default documents
+          setDocuments([
+            {
+              id: 'license',
+              name: "Driver's License",
+              file: null,
+              status: 'pending',
+              required: true,
+              description: 'Upload your driver\'s license',
+              uploadProgress: 0
+            }
+          ]);
+        }
+      }
+    };
+    loadUserDocuments();
   }, [user?.id]);
 
   // Document Management
@@ -272,7 +356,7 @@ export function BookingPage({ motorcycle, navigate, user, addReservation, addTra
 
   const requiredDocumentsUploaded = documents
     .filter(doc => doc.required)
-    .every(doc => doc.status === 'verified') || user?.driver_license_url; // Allow if license is in profile
+    .every(doc => doc.status === 'verified') || loadedUser?.driver_license_url; // Allow if license is in profile
 
   // Validation helpers
   const validateAge = (dob: string) => {
@@ -472,6 +556,35 @@ ${notes ? `\n📝 ADDITIONAL NOTES:\n${notes}` : ''}
 
       // Update motorcycle availability to 'Reserved'
       await motorcycleService.updateMotorcycle(motorcycle.id, { availability: 'Reserved' });
+
+      // Submit any uploaded documents to the database
+      for (const doc of documents) {
+        if (doc.file && (doc.status === 'verified' || doc.status === 'analyzing')) {
+          try {
+            console.log('📄 Submitting document:', doc.id);
+            
+            // Upload file to storage
+            const filePath = await documentService.uploadFile(
+              doc.file,
+              user.id,
+              doc.id === 'license' ? 'driver-license' : 'valid-id'
+            );
+            
+            // Submit document verification record
+            await documentService.submitDocument({
+              user_id: user.id,
+              document_type: doc.id === 'license' ? 'driver-license' : 'valid-id',
+              file_path: filePath,
+              status: 'pending',
+            });
+            
+            console.log('✅ Document submitted successfully:', filePath);
+          } catch (docError) {
+            console.error('⚠️ Failed to submit document:', docError);
+            // Don't fail the booking if document upload fails
+          }
+        }
+      }
 
       // Driver's license is now managed in user profile, no need to upload here
       console.log('✅ Using driver\'s license from user profile:', user.driver_license_url);
@@ -1061,7 +1174,7 @@ ${notes ? `\n📝 ADDITIONAL NOTES:\n${notes}` : ''}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {user?.driver_license_url ? (
+              {loadedUser?.driver_license_url ? (
                 <div className="border border-success/20 rounded-lg p-6 bg-success/5 space-y-4">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center space-x-3">
@@ -1079,16 +1192,16 @@ ${notes ? `\n📝 ADDITIONAL NOTES:\n${notes}` : ''}
                   {/* Image Preview */}
                   <div className="w-full rounded-lg overflow-hidden border border-border bg-background">
                     <img 
-                      src={user.driver_license_url} 
+                      src={loadedUser.driver_license_url} 
                       alt="Driver's License"
                       className="w-full h-auto object-contain cursor-pointer hover:opacity-80 transition-opacity"
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        window.open(user.driver_license_url, '_blank', 'noopener,noreferrer');
+                        window.open(loadedUser.driver_license_url, '_blank', 'noopener,noreferrer');
                       }}
                       onError={(e) => {
-                        console.error('Failed to load license image:', user.driver_license_url);
+                        console.error('Failed to load license image:', loadedUser.driver_license_url);
                         e.currentTarget.style.display = 'none';
                         const parent = e.currentTarget.parentElement;
                         if (parent) {
@@ -1105,7 +1218,7 @@ ${notes ? `\n📝 ADDITIONAL NOTES:\n${notes}` : ''}
                       onClick={(e) => {
                         e.preventDefault();
                         e.stopPropagation();
-                        window.open(user.driver_license_url, '_blank', 'noopener,noreferrer');
+                        window.open(loadedUser.driver_license_url, '_blank', 'noopener,noreferrer');
                       }}
                       type="button"
                     >
@@ -1237,7 +1350,7 @@ ${notes ? `\n📝 ADDITIONAL NOTES:\n${notes}` : ''}
                 <h4 className="font-heading font-semibold text-foreground">Document Status</h4>
                 <div className="flex items-center justify-between">
                   <span className="font-body text-muted-foreground text-sm">Driver's License</span>
-                  {user?.driver_license_url ? (
+                  {loadedUser?.driver_license_url ? (
                     <Badge className="bg-success text-success-foreground">Uploaded</Badge>
                   ) : (
                     <Badge variant="outline" className="text-warning">Not Uploaded</Badge>

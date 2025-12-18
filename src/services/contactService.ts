@@ -7,6 +7,8 @@ export interface ContactMessage {
   message: string;
   created_at: string;
   status: 'new' | 'read' | 'responded';
+  reply_message?: string | null;
+  replied_at?: string | null;
 }
 
 export const contactService = {
@@ -99,5 +101,21 @@ export const contactService = {
     }
 
     return result;
+  },
+
+  // Reply to a message
+  async replyToMessage(id: string, reply: string): Promise<void> {
+    const { error } = await supabase
+      .from('contact_messages')
+      .update({ 
+        reply_message: reply,
+        replied_at: new Date().toISOString(),
+        status: 'responded'
+      })
+      .eq('id', id);
+
+    if (error) {
+      throw new Error(error.message);
+    }
   }
 };

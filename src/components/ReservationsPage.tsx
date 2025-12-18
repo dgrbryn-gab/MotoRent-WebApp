@@ -329,168 +329,155 @@ export function ReservationsPage({ user }: ReservationsPageProps) {
       {/* View Details Dialog */}
       {showDetailsDialog && selectedReservation && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Reservation Details</CardTitle>
+          <Card className="w-full max-w-3xl">
+            <div className="flex flex-row items-center justify-between p-4 border-b">
+              <CardTitle className="text-lg">Reservation Details</CardTitle>
               <Button 
                 variant="ghost" 
                 size="icon"
+                className="ml-4 h-8 w-8"
                 onClick={() => {
                   setShowDetailsDialog(false);
                   setSelectedReservation(null);
                 }}
               >
-                <X className="w-4 h-4" />
+                <X className="w-3 h-3" />
               </Button>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Motorcycle Info */}
-              <div className="flex items-start gap-4">
-                <div className="w-32 h-32 rounded-lg overflow-hidden flex-shrink-0">
-                  <ImageWithFallback
-                    src={selectedReservation.motorcycle.image}
-                    alt={selectedReservation.motorcycle.name}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-xl font-semibold mb-2">{selectedReservation.motorcycle.name}</h3>
-                  <p className="text-muted-foreground mb-3">{selectedReservation.motorcycle.type}</p>
-                  <div className="flex items-center gap-2">
-                    {getStatusIcon(selectedReservation.status)}
-                    {getStatusBadge(selectedReservation.status)}
+            </div>
+            <div className="p-4">
+              <div className="flex gap-4">
+                {/* Left: Motorcycle Image */}
+                <div className="flex-shrink-0">
+                  <div className="w-56 h-56 rounded-lg overflow-hidden">
+                    <ImageWithFallback
+                      src={selectedReservation.motorcycle.image}
+                      alt={selectedReservation.motorcycle.name}
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                 </div>
-              </div>
 
-              <Separator />
-
-              {/* Reservation Info */}
-              <div className="space-y-4">
-                <h4 className="font-semibold">Booking Information</h4>
-                <div className="grid grid-cols-2 gap-4">
+                {/* Right: All Details */}
+                <div className="flex-1 space-y-2">
+                  {/* Motorcycle Info */}
                   <div>
-                    <p className="text-sm text-muted-foreground">Reservation ID</p>
-                    <p className="font-mono text-sm">{selectedReservation.id.slice(0, 8)}...</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Booking Date</p>
-                    <p className="text-sm">{formatDate(selectedReservation.createdAt)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Pick-up Date</p>
-                    <p className="font-medium">{formatDate(selectedReservation.startDate)}</p>
-                    {selectedReservation.pickupTime && (
-                      <p className="text-sm text-muted-foreground">{selectedReservation.pickupTime}</p>
-                    )}
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Return Date</p>
-                    <p className="font-medium">{formatDate(selectedReservation.endDate)}</p>
-                    {selectedReservation.returnTime && (
-                      <p className="text-sm text-muted-foreground">{selectedReservation.returnTime}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Customer Info (from admin_notes) */}
-              {selectedReservation.adminNotes && (
-                <>
-                  <div className="space-y-3">
-                    <h4 className="font-semibold">Customer Information</h4>
-                    <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm">
-                      <pre className="whitespace-pre-wrap font-sans">{selectedReservation.adminNotes}</pre>
+                    <h3 className="text-lg font-semibold mb-0">{selectedReservation.motorcycle.name}</h3>
+                    <p className="text-xs text-muted-foreground mb-1">{selectedReservation.motorcycle.type}</p>
+                    <div className="flex items-center gap-2">
+                      {getStatusIcon(selectedReservation.status)}
+                      {getStatusBadge(selectedReservation.status)}
                     </div>
                   </div>
-                  <Separator />
-                </>
-              )}
 
-              {/* Payment Info */}
-              <div className="space-y-3">
-                <h4 className="font-semibold">Payment Details</h4>
-                <div className="bg-muted/50 rounded-lg p-4 space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Payment Method</span>
-                    <span className="font-medium">
-                      💵 Cash at pickup
-                    </span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between text-lg font-semibold">
-                    <span>Total Amount</span>
-                    <span className="text-primary">₱{selectedReservation.totalPrice}</span>
-                  </div>
-                </div>
-              </div>
+                  <Separator className="my-1" />
 
-              {/* Document Status */}
-              {/* License Document - REPLACE THE EXISTING DOCUMENT STATUS SECTION */}
-              {selectedReservation.license_image_url && (
-                <>
-                  <Separator />
-                  <div className="space-y-3">
-                    <h4 className="font-semibold flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4 text-green-500" />
-                      License Document Uploaded
-                    </h4>
-                    <div className="bg-muted/50 rounded-lg p-4">
-                      <img 
-                        src={selectedReservation.license_image_url} 
-                        alt="Driver's License"
-                        className="w-full max-w-md mx-auto rounded-lg shadow-md cursor-pointer hover:shadow-lg transition-shadow"
-                        onClick={() => window.open(selectedReservation.license_image_url, '_blank')}
-                        onError={(e) => {
-                          e.currentTarget.alt = 'Failed to load license image';
-                          e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI2YzZjRmNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zaXplPSIxOCIgZmlsbD0iIzlmYTZiMiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkZhaWxlZCB0byBsb2FkIGltYWdlPC90ZXh0Pjwvc3ZnPg==';
-                        }}
-                      />
-                      <p className="text-sm text-muted-foreground text-center mt-3 flex items-center justify-center gap-2">
-                        <UserIcon className="w-4 h-4" />
-                        Driver's License / Valid ID
-                      </p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full mt-2"
-                        onClick={() => window.open(selectedReservation.license_image_url, '_blank')}
-                      >
-                        Open in New Tab
-                      </Button>
+                  {/* Reservation Info */}
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-semibold">Booking Information</h4>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Reservation ID</p>
+                        <p className="font-mono text-xs">{selectedReservation.id.slice(0, 8)}...</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Booking Date</p>
+                        <p className="text-xs">{formatDate(selectedReservation.createdAt)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Pick-up Date</p>
+                        <p className="text-xs font-medium">{formatDate(selectedReservation.startDate)}</p>
+                        {selectedReservation.pickupTime && (
+                          <p className="text-xs text-muted-foreground">{selectedReservation.pickupTime}</p>
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Return Date</p>
+                        <p className="text-xs font-medium">{formatDate(selectedReservation.endDate)}</p>
+                        {selectedReservation.returnTime && (
+                          <p className="text-xs text-muted-foreground">{selectedReservation.returnTime}</p>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </>
-              )}
-              
-              {selectedReservation.documents && selectedReservation.documents.length > 0 && (
-                <>
-                  <Separator />
-                  <div className="space-y-3">
-                    <h4 className="font-semibold">Documents</h4>
-                    <div className="space-y-2">
-                      {selectedReservation.documents.map((doc, index) => (
-                        <div key={index} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                          <span className="text-sm capitalize">{doc.type.replace('-', ' ')}</span>
-                          <Badge variant={
-                            doc.status === 'verified' || doc.status === 'approved' ? 'default' :
-                            doc.status === 'rejected' ? 'destructive' : 'secondary'
-                          }>
-                            {doc.status}
-                          </Badge>
+
+                  <Separator className="my-1" />
+
+                  {/* Customer Info (from admin_notes) */}
+                  {selectedReservation.adminNotes && (
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-semibold">Customer Information</h4>
+                      <div className="bg-muted/50 rounded p-1.5 text-xs space-y-0">
+                        <pre className="whitespace-pre-wrap font-sans text-xs">{selectedReservation.adminNotes}</pre>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Payment Info */}
+                  <div className="space-y-1">
+                    <h4 className="text-xs font-semibold">Payment Details</h4>
+                    <div className="bg-muted/50 rounded p-1.5 space-y-0 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Payment Method</span>
+                        <span className="text-xs">💵 Cash</span>
+                      </div>
+                      <div className="flex justify-between font-semibold">
+                        <span>Total</span>
+                        <span className="text-primary">₱{selectedReservation.totalPrice}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Document Status */}
+                  {selectedReservation.license_image_url && (
+                    <div className="space-y-1">
+                      <h4 className="text-xs font-semibold flex items-center gap-1">
+                        <CheckCircle className="w-2.5 h-2.5 text-green-500" />
+                        License Document Uploaded
+                      </h4>
+                      <div className="bg-muted/50 rounded p-1.5">
+                        <img 
+                          src={selectedReservation.license_image_url} 
+                          alt="Driver's License"
+                          className="w-full max-w-xs rounded shadow-sm cursor-pointer hover:shadow-md transition-shadow"
+                          onClick={() => window.open(selectedReservation.license_image_url, '_blank')}
+                          onError={(e) => {
+                            e.currentTarget.alt = 'Failed to load license image';
+                            e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iNDAwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iI2YzZjRmNiIvPjx0ZXh0IHg9IjUwJSIgeT0iNTAlIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zaXplPSIxOCIgZmlsbD0iIzlmYTZiMiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkZhaWxlZCB0byBsb2FkIGltYWdlPC90ZXh0Pjwvc3ZnPg==';
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                  
+                  {selectedReservation.documents && selectedReservation.documents.length > 0 && (
+                    <>
+                      <div className="space-y-1">
+                        <h4 className="text-xs font-semibold">Documents</h4>
+                        <div className="space-y-0.5">
+                          {selectedReservation.documents.map((doc, index) => (
+                            <div key={index} className="flex items-center justify-between p-1 bg-muted/50 rounded text-xs">
+                              <span className="capitalize">{doc.type.replace('-', ' ')}</span>
+                              <Badge variant={
+                                doc.status === 'verified' || doc.status === 'approved' ? 'default' :
+                                doc.status === 'rejected' ? 'destructive' : 'secondary'
+                              } className="text-xs py-0 px-1">
+                                {doc.status}
+                              </Badge>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
 
               {/* Action Buttons */}
-              <div className="flex justify-end gap-2 pt-4">
+              <div className="flex justify-end gap-2 pt-2 mt-2 border-t">
                 <Button 
                   variant="outline"
+                  size="sm"
+                  className="h-8 text-xs"
                   onClick={() => {
                     setShowDetailsDialog(false);
                     setSelectedReservation(null);
@@ -501,6 +488,8 @@ export function ReservationsPage({ user }: ReservationsPageProps) {
                 {selectedReservation.status === 'pending' && (
                   <Button
                     variant="destructive"
+                    size="sm"
+                    className="h-8 text-xs"
                     onClick={() => {
                       setShowDetailsDialog(false);
                       if (window.confirm('Are you sure you want to cancel this reservation?')) {
@@ -513,7 +502,7 @@ export function ReservationsPage({ user }: ReservationsPageProps) {
                   </Button>
                 )}
               </div>
-            </CardContent>
+            </div>
           </Card>
         </div>
       )}

@@ -600,6 +600,11 @@ export const getCurrentUser = async (): Promise<AuthUser | null> => {
           email: newProfile.email,
           name: newProfile.name,
           phone: newProfile.phone,
+          profile_picture_url: newProfile.profile_picture_url,
+          driver_license_url: newProfile.driver_license_url,
+          address: newProfile.address,
+          birthday: newProfile.birthday,
+          license_number: newProfile.license_number,
         };
       } catch (createError: any) {
         console.error('⚠️ Failed to create user profile during getCurrentUser:', createError);
@@ -619,6 +624,11 @@ export const getCurrentUser = async (): Promise<AuthUser | null> => {
       email: userProfile.email,
       name: userProfile.name,
       phone: userProfile.phone,
+      profile_picture_url: userProfile.profile_picture_url,
+      driver_license_url: userProfile.driver_license_url,
+      address: userProfile.address,
+      birthday: userProfile.birthday,
+      license_number: userProfile.license_number,
     };
   } catch (error) {
     console.error('Get current user error:', error);
