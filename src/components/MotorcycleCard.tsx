@@ -107,62 +107,62 @@ export function MotorcycleCard({ motorcycle, onDetails, onReserve }: MotorcycleC
       </div>
       
       {/* Content Section with Grid Alignment */}
-      <CardContent className="p-sm flex flex-col h-full">
+      <CardContent className="p-2 flex flex-col h-full">
         {/* Motorcycle Name - Montserrat Bold */}
-        <h3 className="text-heading text-lg line-clamp-1 mb-2">
+        <h3 className="text-heading text-lg line-clamp-1 mb-0.5">
           {motorcycle.name}
         </h3>
         
         {/* Rating and Reviews - Horizontally Aligned */}
-        <div className="flex items-center mb-3">
-          <Star className="w-4 h-4 fill-yellow-400 text-yellow-400 mr-1" />
-          <span className="text-sm mr-2 text-label">{motorcycle.rating}</span>
-          <span className="text-sm text-muted-foreground font-body">({motorcycle.reviewCount} reviews)</span>
+        <div className="flex items-center mb-1.5">
+          <Star className="w-4 h-4 fill-yellow-400 text-yellow-400 mr-0.5" />
+          <span className="text-sm mr-1 text-label">{motorcycle.rating}</span>
+          <span className="text-xs text-muted-foreground font-body">({motorcycle.reviewCount})</span>
         </div>
         
         {/* Details Row - All Baseline Aligned */}
-        <div className="flex items-baseline justify-between text-sm text-muted-foreground mb-3 gap-xs font-body">
-          <div className="flex items-center gap-1">
-            <Settings className="w-4 h-4" />
-            <span className="text-label">{motorcycle.engineCapacity}cc</span>
+        <div className="flex items-baseline justify-between text-sm text-muted-foreground mb-1.5 gap-2 font-body px-2 py-1.5 bg-muted/30 rounded">
+          <div className="flex items-center gap-0.5">
+            <Settings className="w-3 h-3" />
+            <span className="text-label text-sm">{motorcycle.engineCapacity}cc</span>
           </div>
-          <div className="flex items-center gap-1">
-            <Fuel className="w-4 h-4" />
-            <span className="text-label">{motorcycle.transmission}</span>
+          <div className="flex items-center gap-0.5">
+            <Fuel className="w-3 h-3" />
+            <span className="text-label text-sm">{motorcycle.transmission}</span>
           </div>
-          <div className="flex items-center gap-1">
-            <Calendar className="w-4 h-4" />
-            <span className="text-label">{motorcycle.year}</span>
+          <div className="flex items-center gap-0.5">
+            <Calendar className="w-3 h-3" />
+            <span className="text-label text-sm">{motorcycle.year}</span>
           </div>
         </div>
         
         {/* Price Row - Bold, Left Aligned */}
-        <div className="mb-3">
+        <div className="mb-1">
           <span className="text-price text-2xl">
             ₱{motorcycle.pricePerDay}
           </span>
           <span className="text-sm text-muted-foreground font-body">/day</span>
         </div>
         
-        {/* Description - Exactly 2 Lines Max */}
-        <p className="text-sm text-muted-foreground leading-5 line-clamp-2 flex-1 mb-4 font-body">
+        {/* Description - Exactly 1 Line Max */}
+        <p className="text-sm text-muted-foreground leading-4 line-clamp-1 flex-1 font-body">
           {motorcycle.description}
         </p>
       </CardContent>
       
       {/* Buttons Section - Same Height, Side by Side */}
-      <CardFooter className="p-sm pt-0 mt-auto">
+      <CardFooter className="p-2 pt-1">
         <div className="flex gap-2 w-full">
           <Button 
             variant="outline" 
-            className="flex-1 h-10 text-label btn-hover border-border hover:bg-muted hover:border-primary"
+            className="flex-1 h-9 text-sm font-medium btn-hover border-border hover:bg-muted hover:border-primary"
             onClick={onDetails}
             disabled={motorcycle.availability !== 'Available'}
           >
             Details
           </Button>
           <Button 
-            className="flex-1 h-10 bg-primary hover:bg-primary-dark text-label btn-hover text-[rgba(255,255,255,1)]"
+            className="flex-1 h-9 text-sm font-medium bg-primary hover:bg-primary-dark btn-hover text-[rgba(255,255,255,1)]"
             onClick={onReserve}
             disabled={motorcycle.availability !== 'Available'}
           >

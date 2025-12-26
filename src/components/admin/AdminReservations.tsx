@@ -95,6 +95,28 @@ export function AdminReservations({ onReservationStatusChange }: AdminReservatio
 
   useEffect(() => {
     loadReservations();
+
+    // Subscribe to real-time updates for reservation status changes
+    const channel = supabase
+      .channel('reservations_admin_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'reservations'
+        },
+        async (payload) => {
+          // Refetch reservations on any change
+          console.log('📋 Reservation changed, refetching...', payload);
+          await loadReservations();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      channel.unsubscribe();
+    };
   }, []);
 
   const loadReservations = async () => {

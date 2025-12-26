@@ -61,7 +61,7 @@
   --spacing-3xl: 96px;   /* section breaks */
   
   /* Card System */
-  --card-image-height: 200px;
+  --card-image-height: 340px;
   --card-border-radius: 8px;
   --card-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.06), 0 1px 2px -1px rgba(0, 0, 0, 0.06);
   --card-shadow-hover: 0 8px 16px -4px rgba(46, 26, 71, 0.1), 0 4px 8px -2px rgba(46, 26, 71, 0.06);
