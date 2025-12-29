@@ -18,7 +18,7 @@ const generateOTP = (): string => {
 };
 
 /**
- * Store OTP for verification in database (valid for 10 minutes)
+ * Store OTP for verification in database (valid for 30 minutes)
  * Persistent across server restarts and scalable for distributed deployments
  */
 const storeOTP = async (email: string, code: string): Promise<void> => {
@@ -36,7 +36,7 @@ const storeOTP = async (email: string, code: string): Promise<void> => {
       .from('otp_codes')
       .insert({
         email,
-        code,
+        otp_code: code,
         expires_at: expiresAt
       });
     
@@ -78,7 +78,7 @@ const verifyOTPCode = async (email: string, code: string): Promise<boolean> => {
     }
     
     // Check if code matches
-    const isValid = data.code === code;
+    const isValid = data.otp_code === code;
     
     if (isValid) {
       // Delete OTP after successful verification
