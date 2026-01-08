@@ -468,24 +468,7 @@ export const signIn = async (data: SignInData): Promise<AuthUser> => {
     
     // Handle specific errors
     if (error.message?.includes('Invalid login credentials')) {
-      // Check if user exists in database but not in auth
-      try {
-        const dbUser = await userService.getUserByEmail(data.email);
-        if (dbUser) {
-          // User exists in database but not in auth - they need to set up web login
-          throw new Error(
-            'This account was created on mobile. To login on web, please go to Sign Up, ' +
-            'use the same email, and set a password. This will enable web login for your existing account.'
-          );
-        }
-      } catch (dbCheckError: any) {
-        if (dbCheckError.message?.includes('This account was created on mobile')) {
-          throw dbCheckError;
-        }
-        // If db check fails, continue with normal error
-      }
-      
-      throw new Error('Invalid email/username or password. Please check and try again.');
+      throw new Error('The email or password is incorrect. Please check and try again.');
     }
     if (error.message?.includes('Email not confirmed') || error.message?.includes('verify your email')) {
       throw error;
@@ -874,7 +857,7 @@ export const adminSignIn = async (data: SignInData) => {
     console.error('Admin signin error:', error);
     
     if (error.message?.includes('Invalid login credentials')) {
-      throw new Error('Invalid email or password.');
+      throw new Error('The email or password is incorrect.');
     }
     if (error.message?.includes('Access denied')) {
       throw error;
