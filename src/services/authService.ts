@@ -376,10 +376,14 @@ export const signIn = async (data: SignInData): Promise<AuthUser> => {
       console.log('✅ Admin detected via regular login:', adminData.email);
       
       // Update last login
-      await supabase
-        .from('admin_users')
-        .update({ last_login: new Date().toISOString() })
-        .eq('id', adminData.id);
+      try {
+        await supabase
+          .from('admin_users')
+          .update({ last_login: new Date().toISOString() })
+          .eq('id', adminData.id);
+      } catch (updateError) {
+        console.warn('⚠️ Failed to update admin last login:', updateError);
+      }
 
       return {
         id: adminData.id,

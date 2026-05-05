@@ -13,6 +13,7 @@ import { ImageWithFallback } from './figma/ImageWithFallback';
 import type { Reservation } from '../App';
 import { useState, useEffect } from 'react';
 import { reservationService } from '../services/reservationService';
+import { transactionService } from '../services/transactionService';
 import { motorcycleService } from '../services/motorcycleService';
 import { transformReservations } from '../utils/supabaseHelpers';
 import { toast } from 'sonner';
@@ -66,6 +67,16 @@ export function ReservationsPage({ user }: ReservationsPageProps) {
       if (!reservation) {
         toast.error('Reservation not found');
         return;
+      }
+      
+      // Delete transaction associated with this reservation
+      try {
+        console.log('🗑️ Deleting transaction for cancelled reservation...');
+        await transactionService.deleteReservationTransactions(reservationId);
+        console.log('✅ Transaction deleted');
+      } catch (txError) {
+        console.error('⚠️ Failed to delete transaction:', txError);
+        // Don't fail the cancellation - continue anyway
       }
       
       // Update reservation status to cancelled

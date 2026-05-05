@@ -21,7 +21,8 @@ import {
   Eye,
   Download,
   Filter,
-  User
+  User,
+  RefreshCw
 } from 'lucide-react';
 import {
   Dialog,
@@ -31,6 +32,7 @@ import {
   DialogTitle,
 } from '../ui/dialog';
 import { transactionService } from '../../services/transactionService';
+import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
 
 interface Transaction {
@@ -59,6 +61,7 @@ interface Transaction {
 export function AdminTransactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [deleting, setDeleting] = useState<string | null>(null);
   const [deletingAll, setDeletingAll] = useState(false);
@@ -70,13 +73,51 @@ export function AdminTransactions() {
 
   useEffect(() => {
     loadTransactions();
+
+    // Subscribe to real-time updates for transactions
+    const channel = supabase
+      .channel('transactions-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'transactions',
+        },
+        (payload) => {
+          console.log('🔄 Transaction update detected:', payload);
+          // Reload transactions when any change is detected
+          loadTransactions();
+        }
+      )
+      .subscribe();
+
+    // Cleanup subscription on unmount
+    return () => {
+      channel.unsubscribe();
+    };
   }, []);
 
   const loadTransactions = async () => {
     try {
       setLoading(true);
+      console.log('📊 Admin loading all transactions...');
       const data = await transactionService.getAllTransactions();
+      console.log(`✅ Loaded ${data?.length || 0} transactions`);
       setTransactions(data);
+      
+      // Diagnostic: Log transaction details
+      if (data && data.length > 0) {
+        console.table(data.map(t => ({
+          ID: t.id,
+          Status: t.status,
+          Amount: t.amount,
+          Type: t.type,
+          UserId: t.user_id,
+          ReservationId: t.reservation_id,
+          Date: t.date
+        })));
+      }
     } catch (error: any) {
       console.error('Error loading transactions:', error);
       toast.error('Failed to load transactions');
@@ -84,6 +125,22 @@ export function AdminTransactions() {
       setLoading(false);
     }
   };
+
+  const handleRefresh = async () => {
+    try {
+      setRefreshing(true);
+      const data = await transactionService.getAllTransactions();
+      setTransactions(data);
+      toast.success('Transactions refreshed');
+    } catch (error: any) {
+      console.error('Error refreshing transactions:', error);
+      toast.error('Failed to refresh transactions');
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+
 
   const handleDeleteTransaction = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this transaction? This action cannot be undone.')) {
@@ -252,7 +309,7 @@ export function AdminTransactions() {
       return {
         id: t.id,
         amount: depositAmount,
-        motorcycleName: t.reservation?.motorcycle?.name || 'Unknown Motorcycle',
+        motorcycleName: t.reservation?.motorcycles?.name || 'Unknown Motorcycle',
         customerName: t.user?.name || 'Unknown',
         description: t.description,
         date: t.date,
@@ -309,13 +366,10 @@ export function AdminTransactions() {
           onClick={() => setShowDepositsDialog(true)}
         >
           <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <DollarSign className="w-4 h-4 text-info" />
-              <div>
-                <p className="text-sm text-muted-foreground">Security Deposits</p>
-                <p className="text-xl font-bold">₱{totalDeposits.toLocaleString()}</p>
-                <p className="text-xs text-info mt-1">{depositDetails.length} active · Click to view →</p>
-              </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground">Security Deposits</p>
+              <p className="text-xl font-bold text-yellow-300 mt-1">₱{totalDeposits.toLocaleString()}</p>
+              <p className="text-xs text-cyan-300 mt-1">{depositDetails.length} active · Click to view →</p>
             </div>
           </CardContent>
         </Card>
@@ -359,6 +413,14 @@ export function AdminTransactions() {
                   className="pl-10"
                 />
               </div>
+              <Button
+                variant="outline"
+                onClick={handleRefresh}
+                disabled={refreshing}
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
               <Button
                 variant="outline"
                 onClick={exportToCSV}
@@ -464,9 +526,20 @@ export function AdminTransactions() {
                       </span>
                     </div>
                     
-                    <p className="font-medium text-foreground">
-                      {transaction.description || 'No description'}
-                    </p>
+                    {transaction.reservation && transaction.reservation.motorcycles ? (
+                      <div className="space-y-1">
+                        <p className="font-medium text-foreground">
+                          {transaction.reservation.motorcycles.name}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(transaction.reservation.start_date).toLocaleDateString()} → {new Date(transaction.reservation.end_date).toLocaleDateString()}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="font-medium text-foreground">
+                        {transaction.description || 'No description'}
+                      </p>
+                    )}
 
                     {transaction.user && (
                       <div className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -534,87 +607,98 @@ export function AdminTransactions() {
 
       {/* Transaction Details Dialog */}
       <Dialog open={showDetailsDialog} onOpenChange={setShowDetailsDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Transaction Details</DialogTitle>
-            <DialogDescription>
-              Complete information about this transaction
-            </DialogDescription>
+            <DialogTitle className="text-lg">Transaction Details</DialogTitle>
           </DialogHeader>
 
           {selectedTransaction && (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {/* Status and Type */}
-              <div className="flex items-center gap-3">
-                <Badge className={`${getTypeColor(selectedTransaction.type)} text-base px-3 py-1`}>
+              <div className="flex items-center gap-2">
+                <Badge className={`${getTypeColor(selectedTransaction.type)} text-xs px-2 py-0.5`}>
                   {selectedTransaction.type.toUpperCase()}
                 </Badge>
-                <Badge className={`${getStatusColor(selectedTransaction.status)} text-base px-3 py-1`}>
+                <Badge className={`${getStatusColor(selectedTransaction.status)} text-xs px-2 py-0.5`}>
                   {selectedTransaction.status.toUpperCase()}
                 </Badge>
               </div>
 
               {/* Amount */}
-              <div className="bg-primary/5 p-4 rounded-lg">
-                <p className="text-sm text-muted-foreground mb-1">Transaction Amount</p>
-                <p className="text-3xl font-bold text-primary">₱{selectedTransaction.amount.toLocaleString()}</p>
+              <div className="bg-primary/5 p-3 rounded">
+                <p className="text-xs text-muted-foreground mb-0.5">Amount</p>
+                <p className="text-2xl font-bold text-primary">₱{selectedTransaction.amount.toLocaleString()}</p>
               </div>
 
               {/* Details Grid */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">Transaction ID</p>
-                  <p className="font-mono text-sm">{selectedTransaction.id}</p>
+                  <p className="text-xs text-muted-foreground mb-0.5">Transaction ID</p>
+                  <p className="font-mono text-xs truncate">{selectedTransaction.id}</p>
                 </div>
 
                 <div>
-                  <p className="text-sm text-muted-foreground mb-1">Transaction Date</p>
-                  <p className="text-sm">{formatDate(selectedTransaction.date)}</p>
+                  <p className="text-xs text-muted-foreground mb-0.5">Date</p>
+                  <p className="text-xs">{formatDate(selectedTransaction.date)}</p>
                 </div>
 
                 {selectedTransaction.user && (
                   <>
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Customer Name</p>
-                      <p className="text-sm font-medium">{selectedTransaction.user.name}</p>
-                    </div>
-
-                    <div>
-                      <p className="text-sm text-muted-foreground mb-1">Customer Email</p>
-                      <p className="text-sm">{selectedTransaction.user.email}</p>
+                    <div className="col-span-2">
+                      <p className="text-xs text-muted-foreground mb-0.5">Customer</p>
+                      <p className="text-xs font-medium">{selectedTransaction.user.name}</p>
+                      <p className="text-xs text-muted-foreground">{selectedTransaction.user.email}</p>
                     </div>
                   </>
                 )}
 
                 {selectedTransaction.reservation_id && (
                   <div className="col-span-2">
-                    <p className="text-sm text-muted-foreground mb-1">Reservation ID</p>
-                    <p className="font-mono text-sm">{selectedTransaction.reservation_id}</p>
+                    <p className="text-xs text-muted-foreground mb-0.5">Reservation ID</p>
+                    <p className="font-mono text-xs truncate">{selectedTransaction.reservation_id}</p>
                   </div>
                 )}
 
-                {selectedTransaction.reservation?.motorcycle && (
-                  <div className="col-span-2">
-                    <p className="text-sm text-muted-foreground mb-1">Motorcycle</p>
-                    <p className="text-sm font-medium">{selectedTransaction.reservation.motorcycle.name}</p>
-                  </div>
+                {selectedTransaction.reservation && (
+                  <>
+                    {selectedTransaction.reservation.motorcycles && (
+                      <>
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-0.5">Motorcycle</p>
+                          <p className="text-xs font-medium">{selectedTransaction.reservation.motorcycles.name}</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground mb-0.5">Type</p>
+                          <p className="text-xs">{selectedTransaction.reservation.motorcycles.type}</p>
+                        </div>
+                      </>
+                    )}
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">Pickup Date</p>
+                      <p className="text-xs">{new Date(selectedTransaction.reservation.start_date).toLocaleDateString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground mb-0.5">Return Date</p>
+                      <p className="text-xs">{new Date(selectedTransaction.reservation.end_date).toLocaleDateString()}</p>
+                    </div>
+                  </>
                 )}
 
                 <div className="col-span-2">
-                  <p className="text-sm text-muted-foreground mb-1">Description</p>
-                  <p className="text-sm">{selectedTransaction.description || 'No description provided'}</p>
+                  <p className="text-xs text-muted-foreground mb-0.5">Description</p>
+                  <p className="text-xs line-clamp-2">{selectedTransaction.description || 'No description provided'}</p>
                 </div>
 
                 {selectedTransaction.created_at && (
                   <div className="col-span-2">
-                    <p className="text-sm text-muted-foreground mb-1">Created At</p>
-                    <p className="text-sm">{formatDate(selectedTransaction.created_at)}</p>
+                    <p className="text-xs text-muted-foreground mb-0.5">Created At</p>
+                    <p className="text-xs">{formatDate(selectedTransaction.created_at)}</p>
                   </div>
                 )}
               </div>
 
-              <div className="flex justify-end gap-2 pt-4">
-                <Button variant="outline" onClick={() => setShowDetailsDialog(false)}>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" size="sm" onClick={() => setShowDetailsDialog(false)}>
                   Close
                 </Button>
               </div>
@@ -625,26 +709,26 @@ export function AdminTransactions() {
 
       {/* Deposits Breakdown Dialog */}
       <Dialog open={showDepositsDialog} onOpenChange={setShowDepositsDialog}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Security Deposits Breakdown</DialogTitle>
-            <DialogDescription>
+        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+          <DialogHeader className="border-b border-border pb-4 flex-shrink-0">
+            <DialogTitle className="text-2xl">Security Deposits Breakdown</DialogTitle>
+            <DialogDescription className="text-base mt-2">
               Detailed breakdown of all security deposits held. These amounts will be returned to customers after motorcycle return and inspection.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          <div className="flex-1 overflow-y-auto space-y-4 pr-4">
             {/* Summary Card */}
-            <Card className="bg-info/5 border-info/20">
+            <Card className="bg-info/10 border-info/30 flex-shrink-0">
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-muted-foreground">Total Deposits Held</p>
-                    <p className="text-2xl font-bold text-info">₱{totalDeposits.toLocaleString()}</p>
+                    <p className="text-xs font-semibold text-muted-foreground mb-1">Total Deposits Held</p>
+                    <p className="text-2xl font-bold text-yellow-300">₱{totalDeposits.toLocaleString()}</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-sm text-muted-foreground">Number of Deposits</p>
-                    <p className="text-2xl font-bold">{depositDetails.length}</p>
+                    <p className="text-xs font-semibold text-muted-foreground mb-1">Number of Deposits</p>
+                    <p className="text-2xl font-bold text-cyan-300">{depositDetails.length}</p>
                   </div>
                 </div>
               </CardContent>
@@ -652,46 +736,48 @@ export function AdminTransactions() {
 
             {/* Deposits List */}
             {depositDetails.length > 0 ? (
-              <div className="space-y-3">
-                <h4 className="font-semibold text-sm text-muted-foreground">Individual Deposits</h4>
+              <div className="space-y-2">
+                <h4 className="font-semibold text-xs text-muted-foreground uppercase tracking-wide">Individual Deposits</h4>
                 {depositDetails.map((deposit) => (
-                  <Card key={deposit.id} className="hover:shadow-md transition-shadow">
-                    <CardContent className="p-4">
+                  <Card key={deposit.id} className="hover:shadow-md transition-shadow bg-card border-border">
+                    <CardContent className="p-4 space-y-3">
+                      {/* Header: Date and Amount */}
                       <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 space-y-2">
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="bg-info/10 text-info border-info/20">
-                              Deposit
-                            </Badge>
-                            <span className="text-sm text-muted-foreground">
-                              {formatDate(deposit.date)}
-                            </span>
-                          </div>
-                          
-                          <div>
-                            <p className="font-semibold text-foreground">{deposit.motorcycleName}</p>
-                            <p className="text-sm text-muted-foreground flex items-center gap-1">
-                              <User className="w-3 h-3" />
-                              {deposit.customerName}
-                            </p>
-                          </div>
-
-                          {deposit.description && (
-                            <p className="text-xs text-muted-foreground italic">
-                              {deposit.description}
-                            </p>
-                          )}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="outline" className="bg-amber-500/20 text-amber-300 border-amber-500/40 text-xs font-semibold">
+                            Deposit
+                          </Badge>
+                          <span className="text-xs font-medium text-muted-foreground">
+                            {formatDate(deposit.date)}
+                          </span>
                         </div>
-
-                        <div className="text-right">
-                          <p className="text-2xl font-bold text-info">
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-2xl font-bold text-yellow-400">
                             ₱{deposit.amount.toLocaleString()}
                           </p>
-                          <p className="text-xs text-muted-foreground">
-                            20% Security Deposit
+                          <p className="text-xs font-medium text-muted-foreground">
+                            20% Deposit
                           </p>
                         </div>
                       </div>
+
+                      {/* Motorcycle and Customer */}
+                      <div className="space-y-1 border-t border-border/50 pt-3">
+                        <p className="font-semibold text-sm text-foreground">{deposit.motorcycleName}</p>
+                        <p className="text-xs text-muted-foreground flex items-center gap-2">
+                          <User className="w-3 h-3 flex-shrink-0" />
+                          <span>{deposit.customerName}</span>
+                        </p>
+                      </div>
+
+                      {/* Description */}
+                      {deposit.description && (
+                        <div className="bg-muted/40 rounded border border-border/50 p-2.5">
+                          <p className="text-xs text-muted-foreground leading-relaxed break-words line-clamp-3">
+                            {deposit.description}
+                          </p>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 ))}
@@ -702,12 +788,12 @@ export function AdminTransactions() {
                 <p>No security deposits currently held</p>
               </div>
             )}
+          </div>
 
-            <div className="flex justify-end gap-2 pt-4 border-t">
-              <Button variant="outline" onClick={() => setShowDepositsDialog(false)}>
-                Close
-              </Button>
-            </div>
+          <div className="flex justify-end gap-2 pt-4 border-t border-border flex-shrink-0">
+            <Button variant="outline" onClick={() => setShowDepositsDialog(false)}>
+              Close
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

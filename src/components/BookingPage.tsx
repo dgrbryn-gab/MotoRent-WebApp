@@ -65,11 +65,9 @@ export function BookingPage({ motorcycle, navigate, user, addReservation, addTra
   // Track loaded user data (fresh from database)
   const [loadedUser, setLoadedUser] = useState<User | null>(user);
   
-  // Reservation Details - simplified to just pickup date/time
+  // Reservation Details - simplified to just pickup and return dates
   const [pickupDate, setPickupDate] = useState<Date | undefined>(undefined);
-  const [pickupTime, setPickupTime] = useState('');
   const [returnDate, setReturnDate] = useState<Date | undefined>(undefined);
-  const [returnTime, setReturnTime] = useState(''); // Auto-calculated from pickup time
   const [notes, setNotes] = useState('');
   const [referenceNumber, setReferenceNumber] = useState('');
 
@@ -77,22 +75,7 @@ export function BookingPage({ motorcycle, navigate, user, addReservation, addTra
   const [pickupCalendarOpen, setPickupCalendarOpen] = useState(false);
   const [returnCalendarOpen, setReturnCalendarOpen] = useState(false);
 
-  // Generate time options (8 AM to 5 PM)
-  const timeOptions = Array.from({ length: 10 }, (_, i) => {
-    const hour = 8 + i;
-    // Fix: 12 should be PM (noon), not AM (midnight)
-    const time12 = hour >= 12 ? `${hour > 12 ? hour - 12 : 12}:00 PM` : `${hour}:00 AM`;
-    const time24 = `${hour.toString().padStart(2, '0')}:00`;
-    return { value: time24, label: time12 };
-  });
 
-  // Auto-set return time to exactly 24 hours after pickup time
-  useEffect(() => {
-    if (pickupTime) {
-      // Return time is the same as pickup time (24 hours later)
-      setReturnTime(pickupTime);
-    }
-  }, [pickupTime]);
 
   // Load latest user profile data on mount
   useEffect(() => {
@@ -373,7 +356,6 @@ export function BookingPage({ motorcycle, navigate, user, addReservation, addTra
 
   const canProceedToDocuments = 
     pickupDate && 
-    pickupTime && 
     returnDate && 
     fullName.trim() && 
     email.trim() && 
@@ -396,11 +378,6 @@ export function BookingPage({ motorcycle, navigate, user, addReservation, addTra
     // Validation
     if (!pickupDate || !returnDate) {
       toast.error('Please select pickup and return dates');
-      return;
-    }
-    
-    if (!pickupTime) {
-      toast.error('Please select a pickup time');
       return;
     }
     
@@ -448,6 +425,13 @@ export function BookingPage({ motorcycle, navigate, user, addReservation, addTra
     }
     
     try {
+      console.log('🎯 ═══════════════════════════════════════');
+      console.log('🎯 STARTING BOOKING CREATION PROCESS');
+      console.log('🎯 User ID:', user.id);
+      console.log('🎯 Motorcycle ID:', motorcycle.id);
+      console.log('🎯 Total Amount:', total);
+      console.log('🎯 ═══════════════════════════════════════');
+      
       console.log('Creating reservation with user ID:', user.id);
       console.log('Motorcycle ID:', motorcycle.id);
       
@@ -499,8 +483,8 @@ ${notes ? `\n📝 ADDITIONAL NOTES:\n${notes}` : ''}
         motorcycle_id: motorcycle.id,
         start_date: pickupDate.toISOString().split('T')[0],
         end_date: returnDate.toISOString().split('T')[0],
-        pickup_time: pickupTime || null,
-        return_time: returnTime || null,
+        pickup_time: null,
+        return_time: null,
         total_price: Number(total), // Ensure it's a number
         status: 'pending' as const,
         customer_name: fullName,
@@ -519,15 +503,27 @@ ${notes ? `\n📝 ADDITIONAL NOTES:\n${notes}` : ''}
       const paymentDescription = `Payment for ${motorcycle.name} rental (${pickupDate.toLocaleDateString()} - ${returnDate.toLocaleDateString()}) | Subtotal: ₱${subtotal} | Security Deposit: ₱${securityDeposit} | Total: ₱${total}`;
       
       // Create TRANSACTION record (simplified tracking for internal use)
-      await transactionService.createTransaction({
-        user_id: user.id,
-        reservation_id: (newReservation as any).id,
-        type: 'payment',
-        amount: total,
-        date: new Date().toISOString().split('T')[0],
-        status: 'pending',
-        description: paymentDescription,
-      });
+      try {
+        await transactionService.createTransaction({
+          user_id: user.id,
+          reservation_id: (newReservation as any).id,
+          type: 'payment',
+          amount: total,
+          date: new Date().toISOString().split('T')[0],
+          status: 'pending',
+          description: paymentDescription,
+        });
+        console.log('✅ Transaction record created successfully');
+      } catch (txError: any) {
+        console.error('❌ Failed to create transaction:', txError);
+        console.error('Transaction error details:', {
+          message: txError.message,
+          code: txError.code,
+          details: txError.details,
+          hint: txError.hint
+        });
+        // Don't fail the booking if transaction creation fails - continue anyway
+      }
 
       // Create PAYMENT record (detailed tracking, ready for future Stripe integration)
       const { payment } = await createPaymentIntent({
@@ -595,8 +591,8 @@ ${notes ? `\n📝 ADDITIONAL NOTES:\n${notes}` : ''}
           userEmail: user.email,
           userName: user.name,
           motorcycleName: motorcycle.name,
-          startDate: format(pickupDate, 'PPP') + (pickupTime ? ` at ${pickupTime}` : ''),
-          endDate: format(returnDate, 'PPP') + (returnTime ? ` at ${returnTime}` : ''),
+          startDate: format(pickupDate, 'PPP'),
+          endDate: format(returnDate, 'PPP'),
           totalPrice: total,
           reservationId: (newReservation as any).id,
         });
@@ -922,24 +918,6 @@ ${notes ? `\n📝 ADDITIONAL NOTES:\n${notes}` : ''}
                     );
                   })()}
                 </div>
-                <div className="space-y-2">
-                  <Label className="text-label">Pickup Time *</Label>
-                  <Select value={pickupTime} onValueChange={setPickupTime}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select pickup time" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {timeOptions.map((time) => (
-                        <SelectItem key={time.value} value={time.value}>
-                          {time.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-sm font-body text-muted-foreground">
-                    Shop hours: 8:00 AM - 5:00 PM
-                  </p>
-                </div>
               </div>
               
               <div className="space-y-2">
@@ -989,24 +967,24 @@ ${notes ? `\n📝 ADDITIONAL NOTES:\n${notes}` : ''}
                     />
                   </PopoverContent>
                 </Popover>
-                {pickupDate && pickupTime && !returnDate && (
+                {pickupDate && !returnDate && (
                   <p className="text-sm font-body text-info">
                     📌 Please select a return date at least 1 day after pickup date
                   </p>
                 )}
-                {returnDate && pickupTime && returnTime && (
+                {pickupDate && returnDate && (
                   <p className="text-sm font-body text-muted-foreground">
-                    Return by <span className="font-semibold">{timeOptions.find(t => t.value === returnTime)?.label}</span> on {format(returnDate, "EEEE, MMMM d, yyyy")}
+                    Return by end of business (5:00 PM) on {format(returnDate, "EEEE, MMMM d, yyyy")}
                   </p>
                 )}
-                {pickupTime && returnDate && returnTime && (
+                {pickupDate && returnDate && (
                   <p className="text-sm font-body text-info">
                     ⏰ Exact 24-hour rental period. Overdue penalty: ₱100 per hour
                   </p>
                 )}
                 {!pickupDate && (
                   <p className="text-sm font-body text-muted-foreground">
-                    Select pickup date and time first. Minimum rental: 1 day.
+                    Select pickup date first. Minimum rental: 1 day.
                   </p>
                 )}
               </div>
@@ -1029,11 +1007,6 @@ ${notes ? `\n📝 ADDITIONAL NOTES:\n${notes}` : ''}
                         <p className="font-body text-sm text-muted-foreground">
                           ₱100 per hour for late returns beyond your {totalDays}-day rental period
                         </p>
-                        {pickupTime && returnTime && returnDate && (
-                          <p className="font-body text-sm text-info font-semibold">
-                            Return deadline: {format(returnDate, "MMM d, yyyy")} at {timeOptions.find(t => t.value === returnTime)?.label}
-                          </p>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -1073,7 +1046,8 @@ ${notes ? `\n📝 ADDITIONAL NOTES:\n${notes}` : ''}
             <CardContent className="space-y-3 text-sm font-body text-muted-foreground">
               <p>• Valid driver's license required (will be uploaded in next step)</p>
               <p>• Minimum age requirement: 18 years old</p>
-              <p>• <span className="font-semibold text-foreground">Rental periods are in 24-hour increments</span> (e.g., pickup 10 AM = return 10 AM on return date)</p>
+              <p>• <span className="font-semibold text-foreground">Rental periods are in 24-hour increments</span> (e.g., pickup between 8 AM - 5 PM = return 24 hours later)</p>
+              <p>• <span className="font-semibold text-foreground">Pickup must be between 8:00 AM and 5:00 PM</span> (No pickups after 5:00 PM)</p>
               <p>• Security deposit: 20% of rental amount (refunded after inspection)</p>
               <p>• Fuel should be returned at the same level</p>
               <p>• <span className="font-semibold text-foreground">Overdue penalty:</span> ₱100 per hour beyond your scheduled return date/time</p>
@@ -1307,10 +1281,6 @@ ${notes ? `\n📝 ADDITIONAL NOTES:\n${notes}` : ''}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Return Date</span>
                   <span className="text-foreground">{returnDate ? format(returnDate, "PPP") : 'Not selected'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Pickup Time</span>
-                  <span className="text-foreground">{pickupTime || 'Not selected'}</span>
                 </div>
                 
                 <Separator />
@@ -1574,21 +1544,21 @@ ${notes ? `\n📝 ADDITIONAL NOTES:\n${notes}` : ''}
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <h4 className="font-heading font-semibold text-foreground">Pickup Date & Time</h4>
+                  <h4 className="font-heading font-semibold text-foreground">Pickup Date</h4>
                   <p className="font-body text-muted-foreground">
                     {pickupDate ? format(pickupDate, "PPPP") : 'Not selected'}
                   </p>
                   <p className="font-body text-muted-foreground text-sm">
-                    {pickupTime || 'Time not selected'}
+                    Pickup: 8:00 AM - 5:00 PM
                   </p>
                 </div>
                 <div>
-                  <h4 className="font-heading font-semibold text-foreground">Return Date & Time</h4>
+                  <h4 className="font-heading font-semibold text-foreground">Return Date</h4>
                   <p className="font-body text-muted-foreground">
                     {returnDate ? format(returnDate, "PPPP") : 'Not selected'}
                   </p>
                   <p className="font-body text-muted-foreground text-sm">
-                    {returnTime ? `By ${timeOptions.find(t => t.value === returnTime)?.label}` : 'Time not selected'}
+                    Return: 8:00 AM - 5:00 PM
                   </p>
                 </div>
               </div>

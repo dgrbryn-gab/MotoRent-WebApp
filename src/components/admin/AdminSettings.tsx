@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Alert, AlertDescription } from '../ui/alert';
-import { User, Lock, Mail, Eye, EyeOff, Loader2, CheckCircle, Shield } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { User, Lock, Mail, Eye, EyeOff, Loader2, CheckCircle, Shield, Moon, Sun } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '../../lib/supabase';
 import { authService } from '../../services/authService';
@@ -12,6 +13,10 @@ import { AdminUser } from '../../App';
 
 interface AdminSettingsProps {
   adminUser: AdminUser;
+}
+
+interface AdminPreferences {
+  theme: 'dark' | 'light';
 }
 
 export function AdminSettings({ adminUser }: AdminSettingsProps) {
@@ -28,6 +33,23 @@ export function AdminSettings({ adminUser }: AdminSettingsProps) {
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
+
+  // Admin preferences
+  const [preferences, setPreferences] = useState<AdminPreferences>({
+    theme: 'dark',
+  });
+
+  // Load preferences on mount
+  useEffect(() => {
+    const saved = localStorage.getItem('adminPreferences');
+    if (saved) {
+      try {
+        setPreferences(JSON.parse(saved));
+      } catch (error) {
+        console.error('Failed to load admin preferences:', error);
+      }
+    }
+  }, []);
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -111,6 +133,29 @@ export function AdminSettings({ adminUser }: AdminSettingsProps) {
       toast.error(error.message || 'Failed to change password');
     } finally {
       setIsChangingPassword(false);
+    }
+  };
+
+  const applyTheme = (theme: 'dark' | 'light') => {
+    const html = document.documentElement;
+    if (theme === 'dark') {
+      html.classList.remove('light');
+      html.classList.add('dark');
+    } else {
+      html.classList.remove('dark');
+      html.classList.add('light');
+    }
+  };
+
+  const savePreference = (key: keyof AdminPreferences, value: any) => {
+    const updated = { ...preferences, [key]: value };
+    setPreferences(updated);
+    localStorage.setItem('adminPreferences', JSON.stringify(updated));
+    
+    // Apply theme change immediately
+    if (key === 'theme') {
+      applyTheme(value);
+      toast.success(`Theme changed to ${value}`);
     }
   };
 
@@ -326,6 +371,47 @@ export function AdminSettings({ adminUser }: AdminSettingsProps) {
           </form>
         </CardContent>
       </Card>
-    </div>
+
+      {/* Admin Preferences Card */}
+      <Card className="border border-border">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Moon className="w-5 h-5" />
+            <CardTitle>Admin Preferences</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="theme">Theme</Label>
+              <Select
+                value={preferences.theme}
+                onValueChange={(value) => savePreference('theme', value)}
+              >
+                <SelectTrigger id="theme" className="w-full">
+                  <SelectValue placeholder="Select a theme" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="dark">
+                    <div className="flex items-center gap-2">
+                      <Moon className="w-4 h-4" />
+                      Dark Mode
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="light">
+                    <div className="flex items-center gap-2">
+                      <Sun className="w-4 h-4" />
+                      Light Mode
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-muted-foreground">
+                Choose your preferred theme for the admin panel
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>    </div>
   );
 }

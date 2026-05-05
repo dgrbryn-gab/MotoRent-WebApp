@@ -33,6 +33,7 @@ import { AdminMessages } from './components/admin/AdminMessages';
 import { AdminGPSTracking } from './components/admin/AdminGPSTracking';
 import { AdminSidebar } from './components/admin/AdminSidebar';
 import { Toaster } from './components/ui/sonner';
+import { ChatWidget } from './components/ChatWidget';
 
 export interface Notification {
   id: string;
@@ -157,6 +158,76 @@ export default function App() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null);
 
+  // Apply theme on app mount
+  useEffect(() => {
+    const html = document.documentElement;
+    
+    // Check if there's an admin session first
+    const initializeTheme = async () => {
+      let theme = 'dark'; // default theme
+      
+      try {
+        // Check if current user is an admin
+        const currentUser = await authService.getCurrentUser();
+        if (currentUser) {
+          const { data: adminData } = await supabase
+            .from('admin_users')
+            .select('*')
+            .eq('email', currentUser.email)
+            .maybeSingle();
+          
+          if (adminData) {
+            // Load admin preferences
+            const saved = localStorage.getItem('adminPreferences');
+            if (saved) {
+              try {
+                const preferences = JSON.parse(saved);
+                theme = preferences.theme || 'dark';
+              } catch (error) {
+                console.error('Failed to load admin preferences:', error);
+              }
+            }
+          } else {
+            // Load regular user preferences
+            const saved = localStorage.getItem('appPreferences');
+            if (saved) {
+              try {
+                const preferences = JSON.parse(saved);
+                theme = preferences.theme || 'dark';
+              } catch (error) {
+                console.error('Failed to load preferences:', error);
+              }
+            }
+          }
+        } else {
+          // No user logged in, check appPreferences as default
+          const saved = localStorage.getItem('appPreferences');
+          if (saved) {
+            try {
+              const preferences = JSON.parse(saved);
+              theme = preferences.theme || 'dark';
+            } catch (error) {
+              console.error('Failed to load preferences:', error);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error initializing theme:', error);
+      }
+      
+      // Apply theme
+      if (theme === 'dark') {
+        html.classList.remove('light');
+        html.classList.add('dark');
+      } else {
+        html.classList.remove('dark');
+        html.classList.add('light');
+      }
+    };
+    
+    initializeTheme();
+  }, []);
+
   // Subscribe to real-time notifications
   useEffect(() => {
     if (!user) return;
@@ -217,29 +288,29 @@ export default function App() {
             }
             // Otherwise stay on current admin page (for page refresh)
           } else {
-            // Regular user session - restore user
-            console.log('👤 Regular user session restored:', currentUser.email);
-            setUser({
-              id: currentUser.id,
-              name: currentUser.name,
-              email: currentUser.email,
-              phone: currentUser.phone,
-              profile_picture_url: currentUser.profile_picture_url,
-              driver_license_url: currentUser.driver_license_url,
-              address: currentUser.address,
-              birthday: currentUser.birthday,
-              license_number: currentUser.license_number,
-            });
-            
-            // Load notifications for the existing session
-            await loadUserNotifications(currentUser.id);
-            
-            // If we're on landing/login/signup pages, redirect to home
-            if (['landing', 'login', 'signup'].includes(currentPage)) {
-              setCurrentPage('home');
+              // Regular user session - restore user
+              console.log('👤 Regular user session restored:', currentUser.email);
+              setUser({
+                id: currentUser.id,
+                name: currentUser.name,
+                email: currentUser.email,
+                phone: currentUser.phone,
+                profile_picture_url: currentUser.profile_picture_url,
+                driver_license_url: currentUser.driver_license_url,
+                address: currentUser.address,
+                birthday: currentUser.birthday,
+                license_number: currentUser.license_number,
+              });
+              
+              // Load notifications for the existing session
+              await loadUserNotifications(currentUser.id);
+              
+              // If we're on landing/login/signup pages, redirect to home
+              if (['landing', 'login', 'signup'].includes(currentPage)) {
+                setCurrentPage('home');
+              }
+              // Otherwise stay on current page (for page refresh)
             }
-            // Otherwise stay on current page (for page refresh)
-          }
         } else {
           console.log('ℹ️ No active session found');
           // No session - ensure we're on a public page
@@ -260,19 +331,45 @@ export default function App() {
         console.log('🔄 Auth state changed: User logged in');
         const currentUser = await authService.getCurrentUser();
         if (currentUser) {
-          setUser({
-            id: currentUser.id,
-            name: currentUser.name,
-            email: currentUser.email,
-            phone: currentUser.phone,
-            profile_picture_url: currentUser.profile_picture_url,
-            driver_license_url: currentUser.driver_license_url,
-            address: currentUser.address,
-            birthday: currentUser.birthday,
-            license_number: currentUser.license_number,
-          });
-          // Load notifications when auth state changes
-          await loadUserNotifications(currentUser.id);
+          // Check if this is an admin user
+          const { data: adminData, error } = await supabase
+            .from('admin_users')
+            .select('*')
+            .eq('email', currentUser.email)
+            .maybeSingle();
+          
+          if (adminData && !error) {
+            // This is an admin user
+            console.log('👨‍💼 Admin detected via auth state change:', adminData.email);
+            setAdminUser({
+              id: adminData.id,
+              name: adminData.name,
+              email: adminData.email,
+              role: adminData.role as 'admin' | 'super-admin',
+              lastLogin: adminData.last_login || new Date().toISOString(),
+            });
+            setUser(null); // Clear regular user state for admins
+            // If on a customer page, redirect to admin dashboard
+            if (!['admin-dashboard', 'admin-motorcycles', 'admin-reservations', 'admin-users', 'admin-transactions', 'admin-messages', 'admin-gps', 'admin-settings'].includes(currentPage)) {
+              setCurrentPage('admin-dashboard');
+            }
+          } else {
+            // Regular user
+            setUser({
+              id: currentUser.id,
+              name: currentUser.name,
+              email: currentUser.email,
+              phone: currentUser.phone,
+              profile_picture_url: currentUser.profile_picture_url,
+              driver_license_url: currentUser.driver_license_url,
+              address: currentUser.address,
+              birthday: currentUser.birthday,
+              license_number: currentUser.license_number,
+            });
+            setAdminUser(null); // Clear admin state for regular users
+            // Load notifications when auth state changes
+            await loadUserNotifications(currentUser.id);
+          }
         }
       } else {
         console.log('🔄 Auth state changed: User logged out');
@@ -745,6 +842,11 @@ export default function App() {
             </div>
           </div>
         </div>
+      )}
+      
+      {/* Chatbot Widget - Show for logged-in customers */}
+      {user && !adminUser && !['landing', 'login', 'signup', 'admin-login'].includes(currentPage) && (
+        <ChatWidget userId={user.id} variant="floating" onNavigate={(page) => setCurrentPage(page as Page)} />
       )}
       
       <Toaster richColors />

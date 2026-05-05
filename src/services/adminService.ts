@@ -69,7 +69,7 @@ export const adminService = {
         supabase.from('motorcycles').select('id, availability'),
         supabase.from('reservations').select('id, status, start_date, end_date, total_price, motorcycle_id, motorcycles(name)'),
         supabase.from('users').select('id'),
-        supabase.from('transactions').select('id, type, amount, status')
+        supabase.from('transactions').select('id, type, amount, status, description')
       ]);
 
       // Handle errors
@@ -97,15 +97,37 @@ export const adminService = {
 
       const totalUsers = users.length;
 
-      // Calculate revenue from COMPLETED RESERVATIONS (not transactions)
-      // This is more accurate for a rental business
-      const completedReservationsData = reservations.filter(r => r.status === 'completed');
-      const totalRevenue = completedReservationsData.reduce((sum, r) => sum + (r.total_price || 0), 0);
+      // Helper function to extract breakdown from transaction description
+      const extractBreakdown = (description: string) => {
+        const subtotalMatch = description.match(/Subtotal:\s*₱([\d,]+)/);
+        const depositMatch = description.match(/Security Deposit:\s*₱([\d,]+)/);
+        
+        if (subtotalMatch && depositMatch) {
+          return {
+            subtotal: parseFloat(subtotalMatch[1].replace(/,/g, '')),
+            deposit: parseFloat(depositMatch[1].replace(/,/g, '')),
+          };
+        }
+        return null;
+      };
 
-      // Also keep transaction-based calculations for deposits/refunds
+      // Calculate revenue from COMPLETED TRANSACTIONS
+      // Only the rental portion (subtotal), excluding security deposits
+      // This matches the Transactions page calculation for consistency
       const completedPayments = transactions.filter(t => 
         t.type === 'payment' && t.status === 'completed'
       );
+      
+      const totalRevenue = completedPayments.reduce((sum, t) => {
+        const breakdown = extractBreakdown(t.description || '');
+        if (breakdown) {
+          // Only count the rental amount (subtotal), not the deposit
+          return sum + breakdown.subtotal;
+        }
+        // Fallback for old transactions without breakdown
+        // Assume 20% is deposit, so subtotal = total / 1.20
+        return sum + (t.amount / 1.20);
+      }, 0);
       
       const completedDeposits = transactions.filter(t => 
         t.type === 'deposit' && t.status === 'completed'
@@ -117,8 +139,8 @@ export const adminService = {
       );
       const totalRefunds = completedRefunds.reduce((sum, t) => sum + (t.amount || 0), 0);
 
-      // Count completed reservations as "payments" for the dashboard
-      const paymentTransactions = completedReservationsData.length;
+      // Count completed payment transactions for the dashboard
+      const paymentTransactions = completedPayments.length;
 
       // Debug logging
       console.log('📊 Dashboard Stats Debug:');
@@ -368,36 +390,71 @@ export const adminService = {
   // Get revenue breakdown by type
   async getRevenueBreakdown() {
     const { data, error } = await supabase
-      .from('reservations')
-      .select('total_price, status, created_at');
+      .from('transactions')
+      .select('amount, date, type, status, description')
+      .eq('type', 'payment')
+      .eq('status', 'completed');
 
     if (error) throw error;
 
-    const reservations = data || [];
+    // Helper function to extract breakdown from transaction description
+    const extractBreakdown = (description: string) => {
+      const subtotalMatch = description.match(/Subtotal:\s*₱([\d,]+)/);
+      const depositMatch = description.match(/Security Deposit:\s*₱([\d,]+)/);
+      
+      if (subtotalMatch && depositMatch) {
+        return {
+          subtotal: parseFloat(subtotalMatch[1].replace(/,/g, '')),
+          deposit: parseFloat(depositMatch[1].replace(/,/g, '')),
+        };
+      }
+      return null;
+    };
+
+    const transactions: any[] = data || [];
     const today = new Date();
     
-    const thisMonth = reservations
-      .filter(r => {
-        const rDate = new Date(r.created_at);
-        return rDate.getMonth() === today.getMonth() && rDate.getFullYear() === today.getFullYear();
+    const thisMonth = transactions
+      .filter(t => {
+        const tDate = new Date(t.date);
+        return tDate.getMonth() === today.getMonth() && tDate.getFullYear() === today.getFullYear();
       })
-      .reduce((sum, r: any) => sum + (r.total_price || 0), 0);
+      .reduce((sum, t) => {
+        const breakdown = extractBreakdown(t.description || '');
+        if (breakdown) {
+          return sum + breakdown.subtotal;
+        }
+        // Fallback for old transactions without breakdown
+        return sum + (t.amount / 1.20);
+      }, 0);
 
-    const thisWeek = reservations
-      .filter(r => {
-        const rDate = new Date(r.created_at);
+    const thisWeek = transactions
+      .filter(t => {
+        const tDate = new Date(t.date);
         const weekAgo = new Date(today);
         weekAgo.setDate(weekAgo.getDate() - 7);
-        return rDate >= weekAgo;
+        return tDate >= weekAgo;
       })
-      .reduce((sum, r: any) => sum + (r.total_price || 0), 0);
+      .reduce((sum, t) => {
+        const breakdown = extractBreakdown(t.description || '');
+        if (breakdown) {
+          return sum + breakdown.subtotal;
+        }
+        return sum + (t.amount / 1.20);
+      }, 0);
 
-    const today_revenue = reservations
-      .filter(r => {
-        const rDate = new Date(r.created_at);
-        return rDate.toDateString() === today.toDateString();
+    const today_revenue = transactions
+      .filter(t => {
+        const tDate = new Date(t.date);
+        return tDate.toDateString() === today.toDateString();
       })
-      .reduce((sum, r: any) => sum + (r.total_price || 0), 0);
+      .reduce((sum, t) => {
+        const breakdown = extractBreakdown(t.description || '');
+        if (breakdown) {
+          return sum + breakdown.subtotal;
+        }
+        return sum + (t.amount / 1.20);
+      }, 0);
 
     return { today: today_revenue, week: thisWeek, month: thisMonth };
   }

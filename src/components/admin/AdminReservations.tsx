@@ -162,6 +162,34 @@ export function AdminReservations({ onReservationStatusChange }: AdminReservatio
       // Update reservation status in database
       await reservationService.updateStatus(id, status);
       
+      // Delete transaction when reservation is cancelled
+      if (status === 'cancelled') {
+        try {
+          console.log('🗑️ Deleting transaction for cancelled reservation...');
+          await transactionService.deleteReservationTransactions(id);
+          console.log('✅ Transaction deleted');
+        } catch (txError) {
+          console.error('⚠️ Failed to delete transaction:', txError);
+          // Don't fail the cancellation - continue anyway
+        }
+      }
+      
+      // Update transaction status when marking reservation as completed
+      if (status === 'completed') {
+        try {
+          console.log('🔄 Syncing transaction and payment status to completed...');
+          const syncResult = await transactionService.syncTransactionAndPaymentStatus(id, 'completed');
+          console.log('✅ Sync result:', syncResult);
+          
+          if (!syncResult.transactionUpdated && !syncResult.paymentUpdated) {
+            console.warn('⚠️ Neither transaction nor payment was updated');
+          }
+        } catch (txError) {
+          console.error('❌ Failed to sync transaction and payment status:', txError);
+          // Don't fail the completion if transaction update fails
+        }
+      }
+      
       // If this is an early completion, update admin notes and notify customer
       if (status === 'completed' && rejectionReason) {
         // Store the early completion details in admin notes
@@ -444,18 +472,14 @@ export function AdminReservations({ onReservationStatusChange }: AdminReservatio
           description: `Reservation ${selectedReservation.id} has been confirmed.`
         });
       } else {
-        // Update transaction and payment status to cancelled FIRST
+        // Delete transaction when rejecting reservation
         try {
-          console.log('🔄 Syncing transaction and payment status to cancelled...');
-          const syncResult = await transactionService.syncTransactionAndPaymentStatus(selectedReservation.id, 'cancelled');
-          console.log('✅ Sync result:', syncResult);
-          
-          if (!syncResult.transactionUpdated && !syncResult.paymentUpdated) {
-            console.warn('⚠️ Neither transaction nor payment was updated');
-          }
+          console.log('🗑️ Deleting transaction for cancelled reservation...');
+          await transactionService.deleteReservationTransactions(selectedReservation.id);
+          console.log('✅ Transaction deleted');
         } catch (txError) {
-          console.error('❌ Failed to sync transaction and payment status:', txError);
-          throw new Error('Failed to update payment status. Please try again.');
+          console.error('❌ Failed to delete transaction:', txError);
+          // Don't fail the rejection - continue anyway
         }
         
         // Reject the reservation (this will also auto-reject documents via handleUpdateReservation)

@@ -5,6 +5,22 @@
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1.0" />
       <title>web_app</title>
+      <script>
+        // Apply dark theme immediately to prevent flash of light mode
+        const saved = localStorage.getItem('appPreferences');
+        let theme = 'dark';
+        if (saved) {
+          try {
+            const preferences = JSON.parse(saved);
+            theme = preferences.theme || 'dark';
+          } catch (e) {}
+        }
+        if (theme === 'dark') {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.add('light');
+        }
+      </script>
     </head>
 
     <body>
