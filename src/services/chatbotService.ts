@@ -34,6 +34,89 @@ type Intent = 'booking_status' | 'available_bikes' | 'document_status' | 'paymen
 // Conversation context storage (per user session)
 const conversationContexts = new Map<string, any>();
 
+// ============================================================
+// MOTOBOT PERSONA — Single source of truth for bot identity
+// ============================================================
+export const MOTOBOT_PERSONA = {
+  name: 'Moto',
+  role: 'MotoRent AI Assistant',
+  tone: 'friendly, helpful, and professional',
+  businessInfo: {
+    name: 'MotoRent',
+    location: 'Calinog, Iloilo, Philippines',
+    phone: '(035) 225-3151',
+    email: 'support@motorent.com',
+    hours: 'Monday–Sunday, 8:00 AM – 8:00 PM (Holidays: 9 AM – 6 PM)',
+  },
+  policies: {
+    minAge: 18,
+    cancellation: {
+      fullRefund: '24+ hours before pickup (100% refund)',
+      halfRefund: '12–24 hours before pickup (50% refund)',
+      noRefund: 'Less than 12 hours before pickup (no refund)',
+    },
+    lateReturn: '₱200/hour (first 2 hrs), ₱500/hour thereafter',
+    fuelPolicy: 'Full-to-full — bikes delivered full, must return full',
+    insuranceIncluded: 'Basic accident coverage included; Premium upgrade +₱300/day',
+    helmetsIncluded: true,
+  },
+  bookingRequirements: [
+    'Valid motorcycle driver\'s license',
+    'Government-issued ID (passport or national ID)',
+    'Minimum age: 18 years old',
+    'At least 1 year of riding experience',
+    'Cash deposit required at pickup',
+  ],
+  capabilities: [
+    'Check your booking status',
+    'Show available motorcycles',
+    'Calculate rental costs instantly',
+    'Check bike availability for specific dates',
+    'Explain rental policies',
+    'Guide you step-by-step through booking',
+    'Check your document verification status',
+    'Show your payment history',
+    'Connect you with support',
+  ],
+  cannotDo: [
+    'Create or modify bookings directly — use the Bookings page',
+    'Process or issue refunds directly',
+    'Override any cancellation policy',
+    'Guarantee availability without a confirmed booking',
+  ],
+  greeting: {
+    new: `👋 Hey there! I\'m **Moto**, your MotoRent assistant! 🏍️\n\nHere\'s what I can help you with:\n\n🏍️ **Browse bikes** — fleet, pricing & availability\n📅 **Your bookings** — status, pickups & returns\n💰 **Rental quotes** — instant cost breakdown\n📋 **Requirements** — licenses, age rules & documents\n🛡️ **Policies** — fuel, insurance, cancellation & damage\n\nWhat can I help you with today?`,
+    returning: (count: number) =>
+      `👋 Welcome back! You\'ve rented with us **${count} time${count !== 1 ? 's' : ''}** — thanks for choosing MotoRent! 🏍️\n\nWhat can I help you with today?`,
+  },
+  fallback: `I\'m not sure I understood that, but I\'m here to help! 😊\n\nHere\'s what I can assist with:\n\n🏍️ **Browse bikes** — "What motorcycles do you have?"\n💰 **Get a quote** — "How much for a Honda for 3 days?"\n📅 **Check availability** — "Is anything available March 25?"\n📋 **Your bookings** — "Show my reservation"\n❓ **Policies** — "What\'s your cancellation policy?"\n📞 **Human support** — "I need to speak to someone"\n\nOr just type your question — I\'ll do my best! 🤖`,
+  humanHandoff: `I\'ll connect you with our support team right away! 👨‍💼\n\n📱 **Call:** (035) 225-3151\n📧 **Email:** support@motorent.com\n⏰ **Hours:** Mon–Sun, 8 AM – 8 PM\n📍 **Visit:** MotoRent Shop, Calinog, Iloilo\n\n_Average call response: under 2 minutes_ ⚡`,
+};
+
+// ============================================================
+// RATE LIMITER — Max 15 messages per user per minute
+// ============================================================
+const messageRateLimiter = new Map<string, number[]>();
+
+function isRateLimited(userId: string, maxPerMinute = 15): boolean {
+  const now = Date.now();
+  const timestamps = messageRateLimiter.get(userId) || [];
+  const recent = timestamps.filter((t) => now - t < 60_000);
+  recent.push(now);
+  messageRateLimiter.set(userId, recent);
+  return recent.length > maxPerMinute;
+}
+
+// ============================================================
+// INPUT SANITIZER — Strip HTML, trim, cap at 500 chars
+// ============================================================
+function sanitizeInput(input: string): string {
+  return input
+    .replace(/<[^>]*>/g, '') // strip HTML tags
+    .trim()
+    .substring(0, 500);
+}
+
 // Utility: Fuzzy string matching for better NLP
 function fuzzyMatch(query: string, targets: string[]): string | null {
   const lowerQuery = query.toLowerCase();
@@ -164,8 +247,11 @@ export const chatbotService = {
       return 'availability_check';
     }
 
-    // Available bikes - general inventory
+    // Available bikes — general inventory (Bug 2 fix: 'show available bikes' from browse_bikes action)
     if (
+      lowerMessage === 'show available bikes' ||
+      lowerMessage === 'show bikes' ||
+      lowerMessage === 'browse bikes' ||
       (lowerMessage.includes('available') && !lowerMessage.match(/\b\d{1,2}\b/)) ||
       (lowerMessage.includes('what') && lowerMessage.includes('bike')) ||
       lowerMessage.includes('motorcycle') ||
@@ -189,34 +275,32 @@ export const chatbotService = {
       return 'document_status';
     }
 
-    // Bike pricing
+    // Bike pricing — covers "Pricing", "price list", "rates", "all prices", etc.
     if (
+      lowerMessage === 'pricing' ||
+      lowerMessage === 'price list' ||
+      lowerMessage === 'rates' ||
       lowerMessage.includes('cheapest') ||
       lowerMessage.includes('priciest') ||
       lowerMessage.includes('most expensive') ||
       lowerMessage.includes('least expensive') ||
       lowerMessage.includes('most affordable') ||
+      lowerMessage.includes('all prices') ||
+      lowerMessage.includes('price list') ||
+      lowerMessage.includes('rental rates') ||
+      lowerMessage.includes('cost per day') ||
       lowerMessage.includes('budget') ||
       lowerMessage.includes('premium bike') ||
       lowerMessage.includes('expensive bike') ||
-      (lowerMessage.includes('price') && (lowerMessage.includes('bike') || lowerMessage.includes('motorcycle')))
+      (lowerMessage.includes('price') && (lowerMessage.includes('bike') || lowerMessage.includes('motorcycle'))) ||
+      (lowerMessage.includes('show') && lowerMessage.includes('price')) ||
+      (lowerMessage.includes('show') && lowerMessage.includes('pricing')) ||
+      (lowerMessage.includes('bike') && lowerMessage.includes('rates'))
     ) {
       return 'bike_pricing';
     }
 
-    // Payment
-    if (
-      lowerMessage.includes('payment') ||
-      lowerMessage.includes('pay') ||
-      lowerMessage.includes('cost') ||
-      lowerMessage.includes('refund') ||
-      lowerMessage.includes('transaction') ||
-      lowerMessage.includes('amount')
-    ) {
-      return 'payment_info';
-    }
-
-    // Rental calculator - detect cost/quote queries
+    // Rental calculator — MUST come before payment_info to correctly handle 'cost' keyword
     if (
       (lowerMessage.includes('cost') || lowerMessage.includes('price') || lowerMessage.includes('how much')) &&
       (lowerMessage.includes('rent') || lowerMessage.includes('day') || lowerMessage.includes('days')) &&
@@ -224,6 +308,18 @@ export const chatbotService = {
     ) {
       return 'rental_calculator';
     }
+
+    // Payment — 'cost' intentionally excluded (handled by rental_calculator above)
+    if (
+      lowerMessage.includes('payment') ||
+      lowerMessage.includes('pay') ||
+      lowerMessage.includes('refund') ||
+      lowerMessage.includes('transaction') ||
+      lowerMessage.includes('amount')
+    ) {
+      return 'payment_info';
+    }
+
 
     // Booking assistance - help starting a booking
     if (
@@ -494,10 +590,10 @@ export const chatbotService = {
       endDate = new Date(flexDate.getTime() + 24 * 60 * 60 * 1000);
     }
 
-    // Pattern for dates like "march 25", "25 march", "3/25", "25th"
+    // Pattern for dates like "january 5", "march 25", "25 march", "3/25", "25th"
     const datePatterns = [
-      /(?:march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?/i,
-      /(\d{1,2})(?:st|nd|rd|th)?\s+(?:march|april|may|june|july|august|september|october|november|december)/i,
+      /(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?/i,
+      /(\d{1,2})(?:st|nd|rd|th)?\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)/i,
       /(\d{1,2})\/(\d{1,2})/i,
     ];
 
@@ -507,8 +603,9 @@ export const chatbotService = {
       if (match) {
         // Simple date parsing - assumes current year
         const now = new Date();
-        const month = message.match(/march|april|may|june|july|august|september|october|november|december/i)?.[0];
+        const month = message.match(/january|february|march|april|may|june|july|august|september|october|november|december/i)?.[0];
         const months: { [key: string]: number } = {
+          january: 0, february: 1,
           march: 2, april: 3, may: 4, june: 5, july: 6,
           august: 7, september: 8, october: 9, november: 10, december: 11
         };
@@ -527,8 +624,9 @@ export const chatbotService = {
     const rangeMatch = message.match(/(\d{1,2})(?:\s*(?:st|nd|rd|th))?\s*(?:to|-)\s*(\d{1,2})(?:\s*(?:st|nd|rd|th))?/i);
     if (rangeMatch && startDate) {
       const endDay = parseInt(rangeMatch[2]);
-      const month = message.match(/march|april|may|june|july|august|september|october|november|december/i)?.[0];
+      const month = message.match(/january|february|march|april|may|june|july|august|september|october|november|december/i)?.[0];
       const months: { [key: string]: number } = {
+        january: 0, february: 1,
         march: 2, april: 3, may: 4, june: 5, july: 6,
         august: 7, september: 8, october: 9, november: 10, december: 11
       };
@@ -633,7 +731,7 @@ export const chatbotService = {
       }
     }
     
-    return { bikeName, days: days || undefined };
+    return { bikeName: bikeName ?? undefined, days: days ?? undefined };
   },
 
   // Calculate rental cost
@@ -702,7 +800,7 @@ export const chatbotService = {
     
     if (rentalData.bikes.length > 1) {
       response += `💡 **Compare with similar bikes:**\n`;
-      rentalData.bikes.slice(1, 4).forEach((alt, idx) => {
+      rentalData.bikes.slice(1, 4).forEach((alt: any, idx: number) => {
         const totalAlt = alt.price_per_day * days;
         const diff = totalAlt - bike.total;
         const arrow = diff > 0 ? '↑' : '↓';
@@ -715,25 +813,70 @@ export const chatbotService = {
     return response;
   },
 
-  // Booking assistance - guided booking process (enhanced)
-  formatBookingAssistanceResponse(): string {
-    return `🎯 **Let's Book Your Perfect Ride!**\n\n` +
-           `I'll make this super easy for you. Just answer a few quick questions:\n\n` +
-           `**Step 1:** When do you want to ride?\n` +
-           `• Today\n` +
-           `• Tomorrow\n` +
-           `• Specific date (e.g., "March 25")\n\n` +
-           `**Step 2:** For how many days?\n` +
-           `• 1 day (same-day return)\n` +
-           `• Weekend getaway (2-3 days)\n` +
-           `• Extended trip (4+ days)\n\n` +
-           `**Step 3:** What type of bike?\n` +
-           `• 🏍️ Sport (fast & thrilling)\n` +
-           `• 🛵 Underbone (comfortable & economical)\n` +
-           `• 🏎️ Cruiser (heavy & stable)\n` +
-           `• 💭 Not sure (I'll recommend one!)\n\n` +
-           `_Tell me your answers and I'll show you available bikes with instant pricing!_`;
+  // Booking assistance - step-based state machine (Fix 4)
+  formatBookingStep(step: number, context: any): string {
+    switch (step) {
+      case 1:
+        return (
+          `🎯 **Let's Book Your Perfect Ride!**\n\n` +
+          `I'll guide you step by step — just answer each question!\n\n` +
+          `**Step 1 of 4 — When do you want to ride?**\n\n` +
+          `• Today\n• Tomorrow\n• Specific date (e.g., "January 15" or "March 25")\n• Next weekend\n\n` +
+          `_Just tell me the date and I'll check what's available!_`
+        );
+      case 2: {
+        const dateLabel = context.bookingDate
+          ? new Date(context.bookingDate).toLocaleDateString('en-PH', { weekday: 'long', month: 'long', day: 'numeric' })
+          : 'your chosen date';
+        return (
+          `📅 Got it — **${dateLabel}**!\n\n` +
+          `**Step 2 of 4 — For how many days?**\n\n` +
+          `• 1 day (same-day return)\n` +
+          `• 2–3 days (weekend getaway)\n` +
+          `• 4–7 days (extended trip)\n` +
+          `• More than 7 days (long-term rental)\n\n` +
+          `_Just say the number, e.g., "3 days"_`
+        );
+      }
+      case 3: {
+        const days = context.bookingDays || 1;
+        return (
+          `⏱️ **${days} day${days > 1 ? 's' : ''}** — great choice!\n\n` +
+          `**Step 3 of 4 — What type of bike?**\n\n` +
+          `• 🏍️ **Sport** — fast & thrilling\n` +
+          `• 🛵 **Underbone** — comfortable & economical\n` +
+          `• 🏎️ **Cruiser** — heavy & stable\n` +
+          `• 💨 **Scooter** — easy to ride\n` +
+          `• 🤔 **Not sure** — I'll recommend one!\n\n` +
+          `_Or give me a budget, e.g., "under ₱400/day"_`
+        );
+      }
+      case 4: {
+        const days = context.bookingDays || 1;
+        const bikeType = context.bikeType ? `**${context.bikeType}**` : 'any type';
+        const dateLabel = context.bookingDate
+          ? new Date(context.bookingDate).toLocaleDateString('en-PH', { month: 'long', day: 'numeric' })
+          : 'your chosen date';
+        return (
+          `✅ **Booking Summary**\n\n` +
+          `📅 Start Date: ${dateLabel}\n` +
+          `⏱️ Duration: ${days} day${days > 1 ? 's' : ''}\n` +
+          `🏍️ Bike Type: ${bikeType}\n\n` +
+          `👉 Ready to complete your booking?\n\n` +
+          `Click **[Book Now](/)** on the booking page, select your preferred bike, and enter these dates.\n\n` +
+          `💡 _Need a price estimate first? Ask me: "How much for a Honda for ${days} days?"_`
+        );
+      }
+      default:
+        return this.formatBookingStep(1, context);
+    }
   },
+
+  // Legacy alias kept for any direct calls
+  formatBookingAssistanceResponse(): string {
+    return this.formatBookingStep(1, {});
+  },
+
 
   // Format availability response
   formatAvailabilityResponse(availabilityData: any): string {
@@ -1047,21 +1190,66 @@ Contact support if you need to cancel: support@motorent.com`;
 What would you like to know?`;
   },
 
-  // Format promotions response
-  formatPromotionsResponse(): string {
-    return `🎉 **Current Promotions & Discounts**\n\n` +
-           `📢 **Special Offers:**\n` +
-           `• 🎊 Weekend Special: 20% off all rentals\n` +
-           `• 📅 Weekly Pass: Rent 7+ days, get 25% off\n` +
-           `• 🆕 First-Time Renter: ₱100 discount on first booking\n` +
-           `• 👥 Group Rental: 15% off for 3+ bikes\n` +
-           `• 🏆 Loyalty Program: Earn points per rental\n\n` +
-           `💡 **How to Apply:**\n` +
-           `• Enter promo code at checkout\n` +
-           `• Promotions automatically applied to eligible bookings\n` +
-           `• Some restrictions may apply\n\n` +
-           `Have a promo code? Let me know and I can help verify it!`;
+  // Fix 6 — DB-driven promotions
+  // SQL to create table (run once in Supabase dashboard):
+  // CREATE TABLE promotions (
+  //   id BIGSERIAL PRIMARY KEY,
+  //   title TEXT NOT NULL,
+  //   description TEXT NOT NULL,
+  //   discount_percent INTEGER,
+  //   promo_code TEXT,
+  //   valid_until TIMESTAMP WITH TIME ZONE,
+  //   is_active BOOLEAN DEFAULT true,
+  //   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  // );
+  async getPromotions(): Promise<any[]> {
+    try {
+      const { data, error } = await supabase
+        .from('promotions')
+        .select('title, description, discount_percent, promo_code, valid_until')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(6);
+      if (error) throw error;
+      return data || [];
+    } catch {
+      return []; // Table may not exist yet — handled gracefully below
+    }
   },
+
+  async formatPromotionsResponse(): Promise<string> {
+    const promos = await this.getPromotions();
+
+    if (promos.length === 0) {
+      return (
+        `🎉 **Promotions & Discounts**\n\n` +
+        `📢 No active promotions at the moment — check back soon!\n\n` +
+        `💡 **Always-On Benefits:**\n` +
+        `• 🆕 First-time renter? Ask staff about our welcome discount!\n` +
+        `• 🏆 Loyalty rewards earned with every rental\n` +
+        `• 👥 Group rental? Contact us for custom group pricing\n\n` +
+        `📞 Call **(035) 225-3151** or email **support@motorent.com** for the latest deals!`
+      );
+    }
+
+    let response = `🎉 **Current Promotions & Discounts**\n\n📢 **Active Offers:**\n`;
+    promos.forEach((p) => {
+      const expiry = p.valid_until
+        ? ` _(until ${new Date(p.valid_until).toLocaleDateString('en-PH')})_`
+        : '';
+      const discount = p.discount_percent ? ` — **${p.discount_percent}% off**` : '';
+      const code = p.promo_code ? `\n   🔖 Code: \`${p.promo_code}\`` : '';
+      response += `• 🏷️ **${p.title}**${discount}${expiry}\n   ${p.description}${code}\n`;
+    });
+    response +=
+      `\n💡 **How to Apply:**\n` +
+      `• Enter promo code at checkout\n` +
+      `• Discounts applied automatically to eligible bookings\n` +
+      `• Some restrictions may apply\n\n` +
+      `Have a promo code? Just tell me and I\'ll help verify it!`;
+    return response;
+  },
+
 
   // Format insurance info response
   formatInsuranceInfoResponse(): string {
@@ -1264,9 +1452,37 @@ What would you like to know?`;
   // Main chat handler
   async processMessage(userId: string, message: string): Promise<ChatResponse> {
     try {
-      // Load conversation context for multi-turn support
+      // Fix P10 — Sanitize all input before processing
+      const sanitized = sanitizeInput(message);
+
+      // Fix P9 — Rate limit: 15 messages per user per minute
+      if (isRateLimited(userId)) {
+        return {
+          message: `⏳ You're sending messages too quickly. Please wait a moment and try again!`,
+          intent: 'unknown',
+          quickActions: [],
+        };
+      }
+
+      // Fix P2 — Load context FIRST and use it for multi-turn routing
       const context = this.getConversationContext(userId);
-      const intent = this.classifyIntent(message);
+      let intent = this.classifyIntent(sanitized);
+
+      // Fix P2 — Multi-turn override: short affirmatives continue previous flow
+      const isAffirmative = /^(yes|yeah|yep|ok|okay|sure|book it|confirm|proceed|go ahead|book|reserve|done|i want it|let's go)$/i.test(
+        sanitized.trim()
+      );
+      if (isAffirmative && context.lastIntent === 'rental_calculator') {
+        intent = 'booking_assistance';
+      }
+      if (isAffirmative && context.lastIntent === 'availability_check') {
+        intent = 'booking_assistance';
+      }
+      // Fix P4 — If we're mid-booking-flow, keep routing to booking_assistance
+      if (context.lastIntent === 'booking_assistance' && context.bookingStep && context.bookingStep < 4) {
+        intent = 'booking_assistance';
+      }
+
       let responseText = '';
       let responseData = null;
       let quickActions: QuickAction[] = [];
@@ -1276,12 +1492,13 @@ What would you like to know?`;
           const bookings = await this.getBookingStatus(userId);
           responseData = bookings;
           responseText = this.formatBookingResponse(bookings);
-          quickActions = bookings.length > 0 
+          quickActions = bookings.length > 0
             ? [
                 { label: 'View Details', action: 'view_booking', type: 'primary' },
                 { label: 'Browse Bikes', action: 'browse_bikes', type: 'secondary' }
               ]
             : [{ label: 'Browse Bikes', action: 'browse_bikes', type: 'primary' }];
+          this.setConversationContext(userId, { ...context, lastIntent: intent });
           break;
         }
 
@@ -1295,8 +1512,7 @@ What would you like to know?`;
                 { label: 'Get Quote', action: 'rental_calculator', type: 'secondary' }
               ]
             : [];
-          // Store bike context for follow-up questions
-          this.setConversationContext(userId, { lastIntent: intent, bikes: bikes.slice(0, 3) });
+          this.setConversationContext(userId, { ...context, lastIntent: intent, bikes: bikes.slice(0, 3) });
           break;
         }
 
@@ -1308,6 +1524,7 @@ What would you like to know?`;
             { label: 'Upload Documents', action: 'upload_docs', type: 'primary' },
             { label: 'Need Help?', action: 'doc_help', type: 'secondary' }
           ];
+          this.setConversationContext(userId, { ...context, lastIntent: intent });
           break;
         }
 
@@ -1319,11 +1536,12 @@ What would you like to know?`;
             { label: 'View All Transactions', action: 'all_payments', type: 'primary' },
             { label: 'Download Receipt', action: 'download_receipt', type: 'secondary' }
           ];
+          this.setConversationContext(userId, { ...context, lastIntent: intent });
           break;
         }
 
         case 'rental_calculator': {
-          const { bikeName, days } = this.extractRentalInfo(message);
+          const { bikeName, days } = this.extractRentalInfo(sanitized);
           const rentalData = await this.calculateRentalCost(bikeName, days || 1);
           responseData = rentalData;
           responseText = this.formatRentalCalculatorResponse(rentalData, days || 1);
@@ -1333,18 +1551,59 @@ What would you like to know?`;
                 { label: 'See More Options', action: 'browse_bikes', type: 'secondary' }
               ]
             : [{ label: 'Browse All Bikes', action: 'browse_bikes', type: 'primary' }];
-          // Store rental context
-          this.setConversationContext(userId, { lastIntent: intent, rentalDays: days, selectedBike: bikeName });
+          this.setConversationContext(userId, { ...context, lastIntent: intent, rentalDays: days, selectedBike: bikeName });
           break;
         }
 
+        // Fix P4 — Booking state machine
         case 'booking_assistance': {
-          responseText = this.formatBookingAssistanceResponse();
-          quickActions = [
-            { label: 'Sport Bikes', action: 'filter_sport', type: 'secondary' },
-            { label: 'Budget Bikes', action: 'filter_budget', type: 'secondary' },
-            { label: 'All Bikes', action: 'browse_bikes', type: 'primary' }
-          ];
+          const step = context.bookingStep || 1;
+
+          // Advance the state machine based on current step
+          if (step === 1) {
+            // Starting the flow — advance to step 2 (waiting for date)
+            this.setConversationContext(userId, { ...context, lastIntent: intent, bookingStep: 2 });
+          } else if (step === 2) {
+            // Expecting a date — extract it from the message
+            const { startDate } = this.extractDateRange(sanitized);
+            this.setConversationContext(userId, {
+              ...context,
+              lastIntent: intent,
+              bookingStep: 3,
+              bookingDate: startDate ? startDate.toISOString() : null,
+            });
+          } else if (step === 3) {
+            // Expecting duration — extract days and bike type
+            const { days } = this.extractRentalInfo(sanitized);
+            const bikeTypeMatch = sanitized.match(/sport|underbone|cruiser|scooter/i);
+            this.setConversationContext(userId, {
+              ...context,
+              lastIntent: intent,
+              bookingStep: 4,
+              bookingDays: days || context.bookingDays || 1,
+              bikeType: bikeTypeMatch?.[0] || context.bikeType,
+            });
+          } else if (step === 4) {
+            // Summary shown — reset flow
+            this.setConversationContext(userId, { lastIntent: intent, bookingStep: 1 });
+          }
+
+          // Render step BEFORE the context update was applied (use 'step' variable)
+          responseText = this.formatBookingStep(step, context);
+          quickActions = step === 1
+            ? [
+                { label: '📅 Today', action: 'booking_today', type: 'secondary' },
+                { label: '📅 Tomorrow', action: 'booking_tomorrow', type: 'secondary' },
+                { label: '🏍️ Browse All Bikes', action: 'browse_bikes', type: 'primary' },
+              ]
+            : step === 4
+            ? [
+                { label: 'Go to Booking Page', action: 'book_bike', type: 'primary' },
+                { label: 'Get a Quote First', action: 'rental_calculator', type: 'secondary' },
+              ]
+            : [
+                { label: 'Browse Bikes', action: 'browse_bikes', type: 'secondary' },
+              ];
           break;
         }
 
@@ -1357,11 +1616,12 @@ What would you like to know?`;
             { label: 'Book Premium', action: 'book_premium', type: 'secondary' },
             { label: 'View All', action: 'browse_bikes', type: 'secondary' }
           ];
+          this.setConversationContext(userId, { ...context, lastIntent: intent });
           break;
         }
 
         case 'availability_check': {
-          const { startDate, endDate, bikeName } = this.extractDateRange(message);
+          const { startDate, endDate, bikeName } = this.extractDateRange(sanitized);
           const availabilityData = await this.getAvailabilityForDates(startDate, endDate, bikeName);
           responseData = availabilityData;
           responseText = this.formatAvailabilityResponse(availabilityData);
@@ -1371,17 +1631,17 @@ What would you like to know?`;
                 { label: 'Try Different Dates', action: 'check_dates', type: 'secondary' }
               ]
             : [{ label: 'Browse All Bikes', action: 'browse_bikes', type: 'primary' }];
-          // Store availability context
-          this.setConversationContext(userId, { lastIntent: intent, searchDates: { startDate, endDate }, searchBike: bikeName });
+          this.setConversationContext(userId, { ...context, lastIntent: intent, searchDates: { startDate, endDate }, searchBike: bikeName });
           break;
         }
 
         case 'general_help': {
-          responseText = this.getGeneralHelp(message);
+          responseText = this.getGeneralHelp(sanitized);
           quickActions = [
             { label: 'Browse Bikes', action: 'browse_bikes', type: 'primary' },
             { label: 'Contact Support', action: 'contact_support', type: 'secondary' }
           ];
+          this.setConversationContext(userId, { ...context, lastIntent: intent });
           break;
         }
 
@@ -1395,15 +1655,18 @@ What would you like to know?`;
                 { label: 'See All Bikes', action: 'browse_bikes', type: 'secondary' }
               ]
             : [{ label: 'Browse All Bikes', action: 'browse_bikes', type: 'primary' }];
+          this.setConversationContext(userId, { ...context, lastIntent: intent });
           break;
         }
 
         case 'promotions': {
-          responseText = this.formatPromotionsResponse();
+          // Fix P6 — Now async/DB-driven
+          responseText = await this.formatPromotionsResponse();
           quickActions = [
             { label: 'Browse Bikes', action: 'browse_bikes', type: 'primary' },
             { label: 'Get Calculator', action: 'rental_calculator', type: 'secondary' }
           ];
+          this.setConversationContext(userId, { ...context, lastIntent: intent });
           break;
         }
 
@@ -1414,15 +1677,18 @@ What would you like to know?`;
             { label: 'Browse Bikes', action: 'browse_bikes', type: 'secondary' },
             { label: 'Contact Support', action: 'contact_support', type: 'secondary' }
           ];
+          this.setConversationContext(userId, { ...context, lastIntent: intent });
           break;
         }
 
         case 'contact_agent': {
-          responseText = this.formatContactAgentResponse();
+          // Fix P12 — Use persona humanHandoff
+          responseText = MOTOBOT_PERSONA.humanHandoff;
           quickActions = [
             { label: 'Call Now', action: 'contact_phone', type: 'primary' },
             { label: 'Email Support', action: 'contact_email', type: 'secondary' }
           ];
+          this.setConversationContext(userId, { ...context, lastIntent: intent });
           break;
         }
 
@@ -1432,6 +1698,7 @@ What would you like to know?`;
             { label: 'Check My Bookings', action: 'check_booking', type: 'primary' },
             { label: 'Contact Support', action: 'contact_support', type: 'secondary' }
           ];
+          this.setConversationContext(userId, { ...context, lastIntent: intent });
           break;
         }
 
@@ -1441,6 +1708,7 @@ What would you like to know?`;
             { label: 'Get Directions', action: 'map_directions', type: 'primary' },
             { label: 'Call Us', action: 'contact_phone', type: 'secondary' }
           ];
+          this.setConversationContext(userId, { ...context, lastIntent: intent });
           break;
         }
 
@@ -1450,6 +1718,7 @@ What would you like to know?`;
             { label: 'Browse Bikes', action: 'browse_bikes', type: 'primary' },
             { label: 'Calculate Cost', action: 'rental_calculator', type: 'secondary' }
           ];
+          this.setConversationContext(userId, { ...context, lastIntent: intent });
           break;
         }
 
@@ -1459,6 +1728,7 @@ What would you like to know?`;
             { label: 'Upload Documents', action: 'upload_docs', type: 'primary' },
             { label: 'Browse Bikes', action: 'browse_bikes', type: 'secondary' }
           ];
+          this.setConversationContext(userId, { ...context, lastIntent: intent });
           break;
         }
 
@@ -1468,6 +1738,7 @@ What would you like to know?`;
             { label: 'Check Insurance', action: 'insurance_info', type: 'primary' },
             { label: 'Contact Support', action: 'contact_support', type: 'secondary' }
           ];
+          this.setConversationContext(userId, { ...context, lastIntent: intent });
           break;
         }
 
@@ -1477,6 +1748,7 @@ What would you like to know?`;
             { label: 'Browse Bikes', action: 'browse_bikes', type: 'primary' },
             { label: 'How to Book', action: 'booking_assistance', type: 'secondary' }
           ];
+          this.setConversationContext(userId, { ...context, lastIntent: intent });
           break;
         }
 
@@ -1486,11 +1758,13 @@ What would you like to know?`;
             { label: 'Book Now', action: 'book_bike', type: 'primary' },
             { label: 'Browse Bikes', action: 'browse_bikes', type: 'secondary' }
           ];
+          this.setConversationContext(userId, { ...context, lastIntent: intent });
           break;
         }
 
         default:
-          responseText = this.getGeneralHelp('');
+          // Fix P12 — Use persona fallback instead of generic getGeneralHelp
+          responseText = MOTOBOT_PERSONA.fallback;
           quickActions = [
             { label: 'Browse Bikes', action: 'browse_bikes', type: 'primary' },
             { label: 'Check Booking', action: 'check_booking', type: 'secondary' }
@@ -1511,8 +1785,7 @@ What would you like to know?`;
     } catch (error) {
       console.error('Error processing chat message:', error);
       return {
-        message:
-          "Sorry, I encountered an error. Please try again or contact support: support@motorent.com",
+        message: `😕 Something went wrong on my end. Please try again or contact us at **support@motorent.com** or **(035) 225-3151**.`,
         intent: 'unknown',
         quickActions: [
           { label: 'Contact Support', action: 'contact_support', type: 'primary' }
@@ -1520,6 +1793,7 @@ What would you like to know?`;
       };
     }
   },
+
 
   // Save chat message to database
   async saveMessage(userId: string, userMessage: string, botResponse: string, intent: string): Promise<void> {
@@ -1568,7 +1842,7 @@ What would you like to know?`;
       // Analyze chat history for preferences
       let typePreferences: { [key: string]: number } = {};
       chatHistory.forEach((msg) => {
-        const response = msg.bot_response?.toLowerCase() || '';
+        const response = msg.response?.toLowerCase() || '';
         if (response.includes('sport')) typePreferences['sport'] = (typePreferences['sport'] || 0) + 1;
         if (response.includes('underbone')) typePreferences['underbone'] = (typePreferences['underbone'] || 0) + 1;
         if (response.includes('cruiser')) typePreferences['cruiser'] = (typePreferences['cruiser'] || 0) + 1;
@@ -1619,32 +1893,28 @@ What would you like to know?`;
     }
   },
 
-  // Format personalized welcome message
+  // Fix P12 — Personalized greeting using MOTOBOT_PERSONA
   async formatPersonalizedGreeting(userId: string): Promise<string> {
     const preferences = await this.getUserPreferences(userId);
     const recommendations = await this.getPersonalizedRecommendations(userId);
 
+    // First-time user — use persona new greeting
     if (preferences.visitCount === 0) {
-      return `👋 **Welcome to MotoRent!** 🏍️\n\nI'm your AI assistant. I can help you:\n\n• 🏍️ Browse available motorcycles\n• 💰 Calculate rental costs\n• 📅 Check bike availability\n• 🎯 Get personalized recommendations\n• ✅ Check booking status\n• 📄 Manage documents\n• 💳 View payment history\n\n**What would you like to do?**`;
+      return MOTOBOT_PERSONA.greeting.new;
     }
 
-    let greeting = `👋 **Welcome back!** 🏍️\n\n`;
-    if (preferences.visitCount === 1) {
-      greeting += `Nice to see you again! You've made ${preferences.visitCount} booking with us.`;
-    } else {
-      greeting += `Great to see you! You've made ${preferences.visitCount} bookings with us.`;
-    }
-
-    greeting += `\n\n`;
+    // Returning user — use persona returning greeting + bike recommendations
+    let greeting = MOTOBOT_PERSONA.greeting.returning(preferences.visitCount);
 
     if (recommendations.length > 0) {
-      greeting += `**We think you'll love these:**\n`;
+      greeting += `\n\n⭐ **Based on your history, you might love:**\n`;
       recommendations.forEach((bike) => {
-        greeting += `• **${bike.name}** - ${bike.type} (${bike.engine_capacity}cc) - ₱${bike.price_per_day}/day (${bike.rating}⭐)\n`;
+        greeting += `• **${bike.name}** — ${bike.type} | ${bike.engine_capacity}cc | ₱${bike.price_per_day}/day | ${bike.rating}⭐\n`;
       });
     }
 
     return greeting;
   },
+
 };
 

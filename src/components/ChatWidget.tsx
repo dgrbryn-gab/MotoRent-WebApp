@@ -25,6 +25,8 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [hasGreeted, setHasGreeted] = useState(false);
+  // Fix P7 — Dynamic unread badge count
+  const [unreadCount, setUnreadCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -67,18 +69,19 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
         const history = await chatbotService.getChatHistory(userId, 20);
         const conversationMessages: ConversationMessage[] = [];
 
+        // Fix P13 — Unique IDs prevent React key collisions
         history.forEach((msg) => {
           conversationMessages.push({
-            id: msg.id || `user-${msg.timestamp}`,
+            id: msg.id ? `user-${msg.id}` : `user-${msg.timestamp}-${Math.random()}`,
             sender: 'user',
-            message: msg.user_message,
+            message: msg.message,        // ChatMessage.message = user's text
             timestamp: new Date(msg.timestamp || ''),
           });
 
           conversationMessages.push({
-            id: `bot-${msg.timestamp}`,
+            id: msg.id ? `bot-${msg.id}` : `bot-${msg.timestamp}-${Math.random()}`,
             sender: 'bot',
-            message: msg.bot_response,
+            message: msg.response,       // ChatMessage.response = bot's reply
             timestamp: new Date(msg.timestamp || ''),
           });
         });
@@ -150,6 +153,9 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
 
       setMessages((prev) => [...prev, botMessage]);
 
+      // Fix P7 — Increment unread count when chat is closed
+      if (!isOpen) setUnreadCount((prev) => prev + 1);
+
       // Save to database
       await chatbotService.saveMessage(userId, inputValue, response.message, response.intent);
     } catch (error) {
@@ -170,44 +176,58 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
   };
 
   const handleQuickAction = async (action: string, label: string) => {
-    // Navigation actions that don't send a message
+    // Fix P8 — External link actions (open in new tab)
+    const externalLinks: { [key: string]: string } = {
+      'map_directions': 'https://maps.google.com/?q=Calinog+Iloilo+Philippines',
+      'contact_phone': 'tel:+63352253151',
+      'contact_email': 'mailto:support@motorent.com',
+    };
+    if (externalLinks[action]) {
+      window.open(externalLinks[action], '_blank', 'noopener,noreferrer');
+      return;
+    }
+
+    // Fix P8 — Internal page navigation (only routes that should hard-navigate away from chat)
     const navigationActions: { [key: string]: string } = {
       'open_catalog': 'home',
-      'browse_bikes': 'home',
+      // NOTE: browse_bikes intentionally NOT here — it now shows bikes in chat (see actionMessageMap)
       'book_bike': 'booking',
+      'upload_docs': 'documents',
+      'download_receipt': 'transactions',
     };
-
-    // If this is a navigation action, navigate instead of sending a message
     if (navigationActions[action] && onNavigate) {
       onNavigate(navigationActions[action]);
       return;
     }
 
-    // Handle different quick action types that send messages
+    // All other actions: send as a chat message
     const actionMessageMap: { [key: string]: string } = {
-      'browse_bikes': 'Show me available bikes',
+      // Bug 1 fix — "Pricing" button correctly routes to bike_pricing intent
+      'pricing': 'show bike prices',
+      'bike_pricing': 'show bike prices',
+      // Bug 2 fix — "Browse Bikes" now shows bikes in chat instead of silently navigating
+      'browse_bikes': 'show available bikes',
       'rental_calculator': 'Calculate rental cost',
-      'book_bike': 'I want to book a bike',
       'view_booking': 'Show my bookings',
       'check_booking': 'Check my booking status',
-      'upload_docs': 'Help me upload documents',
       'doc_help': 'I need help with document verification',
       'all_payments': 'Show my payment history',
-      'download_receipt': 'Download receipt',
-      'filter_sport': 'I like sport bikes',
+      'filter_sport': 'Show me sport bikes',
       'filter_budget': 'Show me budget-friendly bikes',
       'book_cheapest': 'Book the cheapest bike',
       'book_premium': 'Book the premium bike',
       'check_dates': 'Check availability for different dates',
       'contact_support': 'How do I contact support?',
-      'open_catalog': 'Open the bike catalog',
-      'recommendations': 'Show me personalized recommendations'
+      'recommendations': 'Show me personalized recommendations',
+      'insurance_info': 'Tell me about insurance coverage',
+      'booking_today': 'I want to ride today',
+      'booking_tomorrow': 'I want to ride tomorrow',
     };
 
     const messageToSend = actionMessageMap[action] || label;
     setInputValue(messageToSend);
-    
-    // Simulate sending the message
+
+    // Simulate form submit
     setTimeout(() => {
       const formElement = document.querySelector('.chat-input-form') as HTMLFormElement;
       if (formElement) {
@@ -216,15 +236,45 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
     }, 100);
   };
 
-  const renderMessage = (msg: ConversationMessage) => {
-    const formattedMessage = msg.message
-      .split('\n')
-      .map((line, idx) => (
-        <span key={idx}>
-          {line}
+  // Fix P11 — Render **bold** markdown inline
+  const renderMarkdown = (text: string): React.ReactNode[] => {
+    if (!text) return [];
+
+    return text.split('\n').map((line, lineIdx) => {
+      const parts = line.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g);
+
+      return (
+        <span key={lineIdx}>
+          {parts.map((part, partIdx) => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+              return <strong key={partIdx}>{part.slice(2, -2)}</strong>;
+            }
+
+            const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+            if (linkMatch) {
+              return (
+                <a
+                  key={partIdx}
+                  href={linkMatch[2]}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="chat-link"
+                >
+                  {linkMatch[1]}
+                </a>
+              );
+            }
+
+            return <span key={partIdx}>{part}</span>;
+          })}
           <br />
         </span>
-      ));
+      );
+    });
+  };
+
+  const renderMessage = (msg: ConversationMessage) => {
+    const formattedMessage = renderMarkdown(msg.message ?? '');
 
     return (
       <div key={msg.id}>
@@ -401,12 +451,16 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
 
       {!isOpen && (
         <button
-          onClick={() => setIsOpen(true)}
+          onClick={() => { setIsOpen(true); setUnreadCount(0); }}
           className="chat-fab"
-          aria-label="Open chat"
+          aria-label="Open MotoRent chat assistant"
+          title="Chat with Moto — MotoRent Assistant"
         >
           <MessageCircle size={24} />
-          <span className="badge">1</span>
+          {/* Fix P7 — Dynamic badge: only show when there are unread messages */}
+          {unreadCount > 0 && (
+            <span className="badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
+          )}
         </button>
       )}
     </div>

@@ -341,6 +341,17 @@
   cursor: not-allowed;
 }
 
+.chat-link {
+  color: #f97316;
+  text-decoration: underline;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.chat-link:hover {
+  opacity: 0.8;
+}
+
 .send-button {
   width: 40px;
   height: 40px;
