@@ -1821,7 +1821,17 @@ What would you like to know?`;
         .limit(limit);
 
       if (error) throw error;
-      return data?.reverse() || [];
+      
+      return (data?.reverse() || []).map((row) => ({
+        id: row.id,
+        user_id: row.user_id,
+        message: row.user_message ?? '',
+        response: row.bot_response ?? '',
+        intent: row.intent ?? '',
+        timestamp: row.timestamp,
+        conversation_id: row.conversation_id,
+      }));
+
     } catch (error) {
       console.error('Error fetching chat history:', error);
       return [];
