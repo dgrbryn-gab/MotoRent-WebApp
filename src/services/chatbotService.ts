@@ -102,9 +102,11 @@ function isRateLimited(userId: string, maxPerMinute = 15): boolean {
   const now = Date.now();
   const timestamps = messageRateLimiter.get(userId) || [];
   const recent = timestamps.filter((t) => now - t < 60_000);
+  // C2 — Check BEFORE pushing to avoid off-by-one
+  if (recent.length >= maxPerMinute) return true;
   recent.push(now);
   messageRateLimiter.set(userId, recent);
-  return recent.length > maxPerMinute;
+  return false;
 }
 
 // ============================================================
@@ -238,13 +240,27 @@ export const chatbotService = {
     // Availability check - specific date queries (improved date parsing)
     if (
       (lowerMessage.includes('available') || lowerMessage.includes('availability') || lowerMessage.includes('open')) &&
-      (lowerMessage.match(/\b\d{1,2}(?:\s*(?:st|nd|rd|th))?\b/) || 
+      // H2 — January & February were missing
+      (lowerMessage.match(/\b\d{1,2}(?:\s*(?:st|nd|rd|th))?\b/) ||
+       lowerMessage.includes('january') || lowerMessage.includes('february') ||
        lowerMessage.includes('march') || lowerMessage.includes('april') || lowerMessage.includes('may') ||
-       lowerMessage.includes('june') || lowerMessage.includes('today') || lowerMessage.includes('tomorrow') ||
+       lowerMessage.includes('june') || lowerMessage.includes('july') || lowerMessage.includes('august') ||
+       lowerMessage.includes('september') || lowerMessage.includes('october') ||
+       lowerMessage.includes('november') || lowerMessage.includes('december') ||
+       lowerMessage.includes('today') || lowerMessage.includes('tomorrow') ||
        lowerMessage.includes('next') || lowerMessage.includes('week') || lowerMessage.includes('in ') ||
        lowerMessage.includes('this weekend'))
     ) {
       return 'availability_check';
+    }
+
+    if (
+      lowerMessage.includes('more options') ||
+      lowerMessage.includes('more motorcycle') ||
+      lowerMessage.includes('other bikes') ||
+      lowerMessage.includes('other options')
+    ) {
+      return 'available_bikes';
     }
 
     // Available bikes — general inventory (Bug 2 fix: 'show available bikes' from browse_bikes action)
@@ -344,13 +360,12 @@ export const chatbotService = {
       return 'recommendations';
     }
 
-    // General help
+    // H3 — 'cancel' removed; handled exclusively by cancellation_request below
     if (
       lowerMessage.includes('help') ||
       lowerMessage.includes('support') ||
       lowerMessage.includes('contact') ||
       lowerMessage.includes('how') ||
-      lowerMessage.includes('cancel') ||
       lowerMessage.includes('policy')
     ) {
       return 'general_help';
@@ -809,7 +824,7 @@ export const chatbotService = {
       response += `\n`;
     }
     
-    response += `👉 **Ready to book?** [Book Now](/) or [See More Options](/bikes)`;
+    response += `👉 **Ready to book?** [Browse Bikes](/bikes) or [See More Options](/bikes)`;
     return response;
   },
 
@@ -863,7 +878,7 @@ export const chatbotService = {
           `⏱️ Duration: ${days} day${days > 1 ? 's' : ''}\n` +
           `🏍️ Bike Type: ${bikeType}\n\n` +
           `👉 Ready to complete your booking?\n\n` +
-          `Click **[Book Now](/)** on the booking page, select your preferred bike, and enter these dates.\n\n` +
+          `Click **[Browse Bikes](/bikes)** on the booking page, select your preferred bike, and enter these dates.\n\n` +
           `💡 _Need a price estimate first? Ask me: "How much for a Honda for ${days} days?"_`
         );
       }
@@ -924,7 +939,7 @@ export const chatbotService = {
     }
 
     if (availableBikes.length > 0) {
-      response += `Ready to book? Click [here](/) or ask me for a quote!`;
+      response += `Ready to book? Click [browse bikes](/bikes) or ask me for a quote!`;
     }
 
     return response;
@@ -975,7 +990,7 @@ export const chatbotService = {
       response += `... and ${bikes.length - 5} more bikes available!\n\n`;
     }
 
-    response += `💡 **Next steps:**\n• 💰 [Get a quote](/calculator) for specific dates\n• 📅 Check availability on specific dates\n• 👉 [View full catalog](/bikes)`;
+    response += `💡 **Next steps:**\n• 💰 [Get a quote](/bikes) for specific dates\n• 📅 Check availability on specific dates\n• 👉 [View full catalog](/bikes)`;
     return response;
   },
 
@@ -1009,7 +1024,7 @@ export const chatbotService = {
     response += `   Difference: ₱${priceDifference.toLocaleString()}/day (${savingsPercent}% savings)\n`;
     response += `   💡 Save ₱${(priceDifference * 3).toLocaleString()} on a 3-day rental!\n\n`;
 
-    response += `Want to book? Click [here](/) to browse all bikes!`;
+    response += `Want to book? Click [browse bikes](/bikes) to browse all bikes!`;
     return response;
   },
 
@@ -1372,7 +1387,7 @@ What would you like to know?`;
            `• Riders 18-25: Deposit may be higher\n` +
            `• International visitors: Valid passport required\n` +
            `• Corporate clients: Special rates available\n\n` +
-           `Ready to book? [Upload Documents](/documents)`;
+           `Ready to book? [View Reservations](/reservations)`;
   },
 
   // Format damage & liability response
@@ -1478,8 +1493,16 @@ What would you like to know?`;
       if (isAffirmative && context.lastIntent === 'availability_check') {
         intent = 'booking_assistance';
       }
-      // Fix P4 — If we're mid-booking-flow, keep routing to booking_assistance
-      if (context.lastIntent === 'booking_assistance' && context.bookingStep && context.bookingStep < 4) {
+      // H1 — Narrowed guard: only override intent for clear step-advancing inputs
+      const isStepResponse = /^\d+$|today|tomorrow|next|sport|underbone|cruiser|scooter|yes|yeah|ok|okay|sure/i
+        .test(sanitized.trim());
+      if (
+        context.lastIntent === 'booking_assistance' &&
+        context.bookingStep &&
+        context.bookingStep >= 2 &&
+        context.bookingStep < 4 &&
+        isStepResponse
+      ) {
         intent = 'booking_assistance';
       }
 
@@ -1548,7 +1571,7 @@ What would you like to know?`;
           quickActions = rentalData.found
             ? [
                 { label: 'Book Now', action: 'book_bike', type: 'primary' },
-                { label: 'See More Options', action: 'browse_bikes', type: 'secondary' }
+                { label: 'See More Options', action: 'see_more_options', type: 'secondary' }
               ]
             : [{ label: 'Browse All Bikes', action: 'browse_bikes', type: 'primary' }];
           this.setConversationContext(userId, { ...context, lastIntent: intent, rentalDays: days, selectedBike: bikeName });
@@ -1564,23 +1587,31 @@ What would you like to know?`;
             // Starting the flow — advance to step 2 (waiting for date)
             this.setConversationContext(userId, { ...context, lastIntent: intent, bookingStep: 2 });
           } else if (step === 2) {
-            // Expecting a date — extract it from the message
+            // C3 — Step 2: extract date; also capture days if user says them together
             const { startDate } = this.extractDateRange(sanitized);
+            const { days: daysFromMsg } = this.extractRentalInfo(sanitized);
+            const rawNumber = sanitized.match(/^(\d+)$/);
+            const extractedDays = daysFromMsg
+              || (rawNumber ? parseInt(rawNumber[1]) : null)
+              || context.bookingDays
+              || 1;
             this.setConversationContext(userId, {
               ...context,
               lastIntent: intent,
               bookingStep: 3,
               bookingDate: startDate ? startDate.toISOString() : null,
+              bookingDays: extractedDays,
             });
           } else if (step === 3) {
-            // Expecting duration — extract days and bike type
-            const { days } = this.extractRentalInfo(sanitized);
-            const bikeTypeMatch = sanitized.match(/sport|underbone|cruiser|scooter/i);
+            // C3 — Step 3: extract bike type only (days already stored in step 2)
+            const bikeTypeMatch = sanitized.match(
+              /sport|underbone|cruiser|scooter/i
+            );
             this.setConversationContext(userId, {
               ...context,
               lastIntent: intent,
               bookingStep: 4,
-              bookingDays: days || context.bookingDays || 1,
+              bookingDays: context.bookingDays || 1,
               bikeType: bikeTypeMatch?.[0] || context.bikeType,
             });
           } else if (step === 4) {
@@ -1762,13 +1793,15 @@ What would you like to know?`;
           break;
         }
 
-        default:
-          // Fix P12 — Use persona fallback instead of generic getGeneralHelp
-          responseText = MOTOBOT_PERSONA.fallback;
+        default: {
+          // C1 — Unknown intent: delegate to Gemini AI instead of static fallback
+          responseText = await this.askAI(sanitized, context);
           quickActions = [
             { label: 'Browse Bikes', action: 'browse_bikes', type: 'primary' },
-            { label: 'Check Booking', action: 'check_booking', type: 'secondary' }
+            { label: 'Check Booking', action: 'check_booking', type: 'secondary' },
           ];
+          break;
+        }
       }
 
       return {
@@ -1798,13 +1831,15 @@ What would you like to know?`;
   // Save chat message to database
   async saveMessage(userId: string, userMessage: string, botResponse: string, intent: string): Promise<void> {
     try {
-      await supabase.from('chat_conversations').insert({
+      // H5 — Capture insert errors instead of silently swallowing them
+      const { error } = await supabase.from('chat_conversations').insert({
         user_id: userId,
         user_message: userMessage,
         bot_response: botResponse,
         intent,
         timestamp: new Date().toISOString(),
       });
+      if (error) console.warn('[ChatBot] saveMessage failed:', error.message);
     } catch (error) {
       console.error('Error saving chat message:', error);
     }
@@ -1925,6 +1960,27 @@ What would you like to know?`;
 
     return greeting;
   },
+    // chatbotService.ts — askAI (M5 + L3 applied)
+  async askAI(message: string, _context: any): Promise<string> {
+  try {
+    const { data, error } = await supabase.functions.invoke('gemini-chat', {
+      body: { message },
+    });
+
+    if (error) {
+      console.warn('[Moto AI] Edge Function error:', error);
+      return MOTOBOT_PERSONA.fallback;
+    }
+
+    const text = (data as any)?.text;
+    return (text && String(text).trim()) ? String(text).trim() : MOTOBOT_PERSONA.fallback;
+
+  } catch (error) {
+    console.error('[Moto AI] askAI error:', error);
+    return MOTOBOT_PERSONA.fallback;
+  }
+}
+
 
 };
 

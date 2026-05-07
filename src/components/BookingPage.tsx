@@ -531,8 +531,8 @@ ${notes ? `\n📝 ADDITIONAL NOTES:\n${notes}` : ''}
         userId: user.id,
         amount: total,
         currency: 'PHP',
-        paymentMethod: 'cash',
         metadata: {
+          payment_method: 'cash',
           motorcycle_id: motorcycle.id,
           motorcycle_name: motorcycle.name,
           pickup_date: pickupDate.toISOString(),

@@ -160,6 +160,29 @@
   background-color: rgba(255, 255, 255, 0.15);
 }
 
+.chat-link {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  color: #f97316;
+  text-decoration: underline;
+  font-weight: 500;
+  cursor: pointer;
+  font-size: inherit;
+  display: inline-block;
+  line-height: inherit;
+  margin: 0;
+  transition: opacity 0.2s ease;
+}
+
+.chat-link:hover {
+  opacity: 0.7;
+}
+
+.chat-link:active {
+  opacity: 0.6;
+}
+
 .chat-messages-container {
   flex: 1;
   overflow-y: auto;
@@ -341,17 +364,6 @@
   cursor: not-allowed;
 }
 
-.chat-link {
-  color: #f97316;
-  text-decoration: underline;
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.chat-link:hover {
-  opacity: 0.8;
-}
-
 .send-button {
   width: 40px;
   height: 40px;
@@ -451,27 +463,32 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 8px;
+  margin-top: 12px;
   margin-left: 36px;
   animation: fadeIn 0.3s ease-in;
+  pointer-events: auto;
+  z-index: 10;
 }
 
 .quick-action-btn {
-  padding: 8px 14px;
-  border-radius: 16px;
+  padding: 10px 16px;
+  border-radius: 20px;
   border: 1px solid transparent;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   transition: all 0.2s ease;
   white-space: nowrap;
   display: inline-block;
   max-width: fit-content;
+  position: relative;
+  pointer-events: auto;
 }
 
 .quick-action-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  pointer-events: none;
 }
 
 .quick-action-btn.primary {
@@ -488,6 +505,7 @@
 
 .quick-action-btn.primary:active:not(:disabled) {
   transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.2);
 }
 
 .quick-action-btn.secondary {

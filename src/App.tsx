@@ -290,16 +290,17 @@ export default function App() {
           } else {
               // Regular user session - restore user
               console.log('👤 Regular user session restored:', currentUser.email);
+              const authProfile = currentUser as any;
               setUser({
                 id: currentUser.id,
                 name: currentUser.name,
                 email: currentUser.email,
                 phone: currentUser.phone,
-                profile_picture_url: currentUser.profile_picture_url,
-                driver_license_url: currentUser.driver_license_url,
-                address: currentUser.address,
-                birthday: currentUser.birthday,
-                license_number: currentUser.license_number,
+                profile_picture_url: authProfile.profile_picture_url,
+                driver_license_url: authProfile.driver_license_url,
+                address: authProfile.address,
+                birthday: authProfile.birthday,
+                license_number: authProfile.license_number,
               });
               
               // Load notifications for the existing session
@@ -355,16 +356,17 @@ export default function App() {
             }
           } else {
             // Regular user
+            const authProfile = currentUser as any;
             setUser({
               id: currentUser.id,
               name: currentUser.name,
               email: currentUser.email,
               phone: currentUser.phone,
-              profile_picture_url: currentUser.profile_picture_url,
-              driver_license_url: currentUser.driver_license_url,
-              address: currentUser.address,
-              birthday: currentUser.birthday,
-              license_number: currentUser.license_number,
+              profile_picture_url: authProfile.profile_picture_url,
+              driver_license_url: authProfile.driver_license_url,
+              address: authProfile.address,
+              birthday: authProfile.birthday,
+              license_number: authProfile.license_number,
             });
             setAdminUser(null); // Clear admin state for regular users
             // Load notifications when auth state changes

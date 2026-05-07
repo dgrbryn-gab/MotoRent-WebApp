@@ -28,6 +28,13 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
   // Fix P7 — Dynamic unread badge count
   const [unreadCount, setUnreadCount] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // M3 — isOpenRef prevents stale-closure bug in sendMessage
+  const isOpenRef = useRef(isOpen);
+  useEffect(() => { isOpenRef.current = isOpen; }, [isOpen]);
+  const onNavigateRef = useRef(onNavigate);
+  useEffect(() => { 
+    onNavigateRef.current = onNavigate; 
+  }, [onNavigate]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -119,60 +126,55 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
     }
   }, [hasGreeted, isOpen, messages.length, userId]);
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const sendMessage = async (text: string) => {
+  if (!text.trim()) return;
 
-    if (!inputValue.trim()) return;
+  const userMessage: ConversationMessage = {
+    id: `user-${Date.now()}`,
+    sender: 'user',
+    message: text,
+    timestamp: new Date(),
+  };
 
-    // Add user message
-    const userMessageId = `user-${Date.now()}`;
-    const userMessage: ConversationMessage = {
-      id: userMessageId,
-      sender: 'user',
-      message: inputValue,
+  setMessages((prev) => [...prev, userMessage]);
+  setIsLoading(true);
+
+  try {
+    const response = await chatbotService.processMessage(userId, text);
+
+    const botMessage: ConversationMessage = {
+      id: `bot-${Date.now()}`,
+      sender: 'bot',
+      message: response.message,
       timestamp: new Date(),
+      quickActions: response.quickActions,
     };
 
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((prev) => [...prev, botMessage]);
+    if (!isOpenRef.current) setUnreadCount((prev) => prev + 1);
+
+    await chatbotService.saveMessage(userId, text, response.message, response.intent);
+  } catch (error) {
+    console.error('Error sending message:', error);
+    setMessages((prev) => [...prev, {
+      id: `error-${Date.now()}`,
+      sender: 'bot',
+      message: 'Sorry, something went wrong. Please try again.',
+      timestamp: new Date(),
+    }]);
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+  
+
+  // L1 — Dead commented code removed
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const text = inputValue.trim();
     setInputValue('');
-    setIsLoading(true);
-
-    try {
-      // Get bot response
-      const response = await chatbotService.processMessage(userId, inputValue);
-
-      // Add bot message with quick actions
-      const botMessageId = `bot-${Date.now()}`;
-      const botMessage: ConversationMessage = {
-        id: botMessageId,
-        sender: 'bot',
-        message: response.message,
-        timestamp: new Date(),
-        quickActions: response.quickActions,
-      };
-
-      setMessages((prev) => [...prev, botMessage]);
-
-      // Fix P7 — Increment unread count when chat is closed
-      if (!isOpen) setUnreadCount((prev) => prev + 1);
-
-      // Save to database
-      await chatbotService.saveMessage(userId, inputValue, response.message, response.intent);
-    } catch (error) {
-      console.error('Error sending message:', error);
-
-      const errorMessage: ConversationMessage = {
-        id: `error-${Date.now()}`,
-        sender: 'bot',
-        message:
-          "Sorry, I encountered an error processing your request. Please try again or contact support.",
-        timestamp: new Date(),
-      };
-
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
-    }
+    await sendMessage(text);
   };
 
   const handleQuickAction = async (action: string, label: string) => {
@@ -187,13 +189,19 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
       return;
     }
 
-    // Fix P8 — Internal page navigation (only routes that should hard-navigate away from chat)
+    // H4 — Internal page navigation: book_bike/cheapest/premium now navigate to home
     const navigationActions: { [key: string]: string } = {
       'open_catalog': 'home',
-      // NOTE: browse_bikes intentionally NOT here — it now shows bikes in chat (see actionMessageMap)
-      'book_bike': 'booking',
-      'upload_docs': 'documents',
+      'book_bike': 'home',
+      'book_cheapest': 'home',
+      'book_premium': 'home',
+      // NOTE: browse_bikes intentionally NOT here — shows bikes in chat
+      'upload_docs': 'reservations',
       'download_receipt': 'transactions',
+      'view_reservations': 'reservations',
+      'view_profile': 'profile',
+      'view_favorites': 'favorites',
+      'help': 'help-support',
     };
     if (navigationActions[action] && onNavigate) {
       onNavigate(navigationActions[action]);
@@ -202,10 +210,8 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
 
     // All other actions: send as a chat message
     const actionMessageMap: { [key: string]: string } = {
-      // Bug 1 fix — "Pricing" button correctly routes to bike_pricing intent
       'pricing': 'show bike prices',
       'bike_pricing': 'show bike prices',
-      // Bug 2 fix — "Browse Bikes" now shows bikes in chat instead of silently navigating
       'browse_bikes': 'show available bikes',
       'rental_calculator': 'Calculate rental cost',
       'view_booking': 'Show my bookings',
@@ -214,33 +220,48 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
       'all_payments': 'Show my payment history',
       'filter_sport': 'Show me sport bikes',
       'filter_budget': 'Show me budget-friendly bikes',
-      'book_cheapest': 'Book the cheapest bike',
-      'book_premium': 'Book the premium bike',
       'check_dates': 'Check availability for different dates',
       'contact_support': 'How do I contact support?',
       'recommendations': 'Show me personalized recommendations',
       'insurance_info': 'Tell me about insurance coverage',
       'booking_today': 'I want to ride today',
       'booking_tomorrow': 'I want to ride tomorrow',
+      'booking_assistance': 'Help me book a motorcycle',
+      'see_more_options': 'Show me more motorcycle options',
+      'more_options': 'Show me more motorcycle options',
+      'how_to_book': 'Help me book a motorcycle',
     };
 
     const messageToSend = actionMessageMap[action] || label;
-    setInputValue(messageToSend);
+    await sendMessage(messageToSend);
+  };
 
-    // Simulate form submit
-    setTimeout(() => {
-      const formElement = document.querySelector('.chat-input-form') as HTMLFormElement;
-      if (formElement) {
-        formElement.dispatchEvent(new Event('submit', { bubbles: true }));
+  const normalizeUrl = (url: string): string => {
+    try {
+      // Handle relative paths directly
+      if (url.startsWith('/')) {
+        return url.split('?')[0].split('#')[0].replace(/\/$/, '') || '/';
       }
-    }, 100);
+      // Handle absolute URLs
+      const parsed = new URL(url, window.location.origin);
+      const path = parsed.pathname
+        .split('?')[0]
+        .split('#')[0]
+        .replace(/\/$/, '');
+      return path || '/';
+    } catch {
+      return url.split('?')[0].split('#')[0] || '/';
+    }
   };
 
   // Fix P11 — Render **bold** markdown inline
-  const renderMarkdown = (text: string): React.ReactNode[] => {
+  const renderMarkdown = (
+    text: string
+  ): React.ReactNode[] => {
     if (!text) return [];
 
-    return text.split('\n').map((line, lineIdx) => {
+    // H6-D + M1: arr param for conditional <br />, robust URL parsing
+    return text.split('\n').map((line, lineIdx, arr) => {
       const parts = line.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\))/g);
 
       return (
@@ -252,22 +273,63 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
 
             const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
             if (linkMatch) {
+              const linkLabel = linkMatch[1];
+              const linkUrl = linkMatch[2];
+
+              const resolvedPath = normalizeUrl(linkUrl);
+
+              const internalRoutes: { [key: string]: string } = {
+                '': 'home',
+                '/': 'home',
+                '/bikes': 'home',
+                '/calculator': 'home',
+                '/booking': 'home',
+                '/documents': 'reservations',
+                '/transactions': 'transactions',
+                '/reservations': 'reservations',
+                '/favorites': 'favorites',
+                '/help': 'help-support',
+                '/profile': 'profile',
+              };
+
+              const internalRoute = internalRoutes[resolvedPath];
+
+              if (internalRoute) {
+                return (
+                  <button
+                    key={partIdx}
+                    type="button"
+                    className="chat-link"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      if (onNavigateRef.current) {
+                        onNavigateRef.current(internalRoute);
+                      }
+                    }}
+                  >
+                    {linkLabel}
+                  </button>
+                );
+              }
+
               return (
                 <a
                   key={partIdx}
-                  href={linkMatch[2]}
+                  href={linkUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="chat-link"
                 >
-                  {linkMatch[1]}
+                  {linkLabel}
                 </a>
               );
             }
 
             return <span key={partIdx}>{part}</span>;
           })}
-          <br />
+          {/* M1 — No trailing <br /> on the last line */}
+          {lineIdx < arr.length - 1 && <br />}
         </span>
       );
     });
@@ -283,10 +345,21 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
         >
           <div
             className={`message-bubble ${msg.sender === 'bot' ? 'bot-bubble' : 'user-bubble'}`}
+            style={{ pointerEvents: 'auto' }}
           >
-            <p className="message-text">{formattedMessage}</p>
+            <div 
+              className="message-content"
+              style={{ pointerEvents: 'auto' }}
+            >
+              {formattedMessage}
+            </div>
             <span className="message-time">
-              {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              {/* M4 — Philippine Standard Time */}
+              {msg.timestamp.toLocaleTimeString('en-PH', {
+                hour: '2-digit',
+                minute: '2-digit',
+                timeZone: 'Asia/Manila',
+              })}
             </span>
           </div>
         </div>
@@ -294,9 +367,11 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
         {/* Render quick action buttons for bot messages */}
         {msg.sender === 'bot' && msg.quickActions && msg.quickActions.length > 0 && (
           <div className="quick-actions-container">
-            {msg.quickActions.map((action, idx) => (
+            {/* M2 — Stable key prevents React reconciliation flicker */}
+            {msg.quickActions.map((action) => (
               <button
-                key={idx}
+                key={`${msg.id}-qa-${action.action}`}
+                type="button"
                 className={`quick-action-btn ${action.type || 'secondary'}`}
                 onClick={() => handleQuickAction(action.action, action.label)}
                 disabled={isLoading}
@@ -315,7 +390,9 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
       <div className="chat-widget-embedded">
         <div className="chat-header">
           <h3>MotoRent Support</h3>
+          {/* L2 — type=button prevents accidental form submit */}
           <button
+            type="button"
             onClick={restartConversation}
             className="refresh-button"
             aria-label="Restart conversation"
@@ -383,7 +460,9 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
           <div className="chat-header">
             <h3>MotoRent Support</h3>
             <div className="header-buttons">
+              {/* L2 — type=button on both floating header buttons */}
               <button
+                type="button"
                 onClick={restartConversation}
                 className="refresh-button"
                 aria-label="Restart conversation"
@@ -392,6 +471,7 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
                 <RotateCcw size={18} />
               </button>
               <button
+                type="button"
                 onClick={() => setIsOpen(false)}
                 className="close-button"
                 aria-label="Close chat"

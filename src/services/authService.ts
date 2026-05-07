@@ -166,6 +166,11 @@ export interface AuthUser {
   phone: string;
   role?: 'admin' | 'super-admin' | 'user';
   isAdmin?: boolean;
+  profile_picture_url?: string;
+  driver_license_url?: string;
+  address?: string;
+  birthday?: string;
+  license_number?: string;
 }
 
 export interface SignUpData {
