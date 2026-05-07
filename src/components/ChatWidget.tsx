@@ -52,10 +52,10 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
       {
         id: greetingId,
         sender: 'bot',
-        message: `Hi there! I'm your MotoRent assistant. I can help you check bike availability, pricing, booking status, and more. What can I help you with today?`,
+        message: `👋 Welcome to Dumaguete MotoRent! I'm your AI assistant here to help with bookings, vehicle availability, pricing, and general support.\n\nHow can I assist you today?`,
         timestamp: new Date(),
         quickActions: [
-          { label: 'Available bikes', action: 'available_bikes', type: 'primary' },
+          { label: 'Available vehicles', action: 'available_bikes', type: 'primary' },
           { label: 'Pricing', action: 'bike_pricing', type: 'secondary' },
           { label: 'How to book', action: 'booking_assistance', type: 'secondary' },
           { label: 'Requirements', action: 'age_requirements', type: 'secondary' }
@@ -113,10 +113,10 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
         {
           id: greetingId,
           sender: 'bot',
-          message: `Hi there! I'm your MotoRent assistant. I can help you check bike availability, pricing, booking status, and more. What can I help you with today?`,
+          message: `👋 Welcome to Dumaguete MotoRent! I'm your AI assistant here to help with bookings, vehicle availability, pricing, and general support.\n\nHow can I assist you today?`,
           timestamp: new Date(),
           quickActions: [
-            { label: 'Available bikes', action: 'available_bikes', type: 'primary' },
+            { label: 'Available vehicles', action: 'available_bikes', type: 'primary' },
             { label: 'Pricing', action: 'bike_pricing', type: 'secondary' },
             { label: 'How to book', action: 'booking_assistance', type: 'secondary' },
             { label: 'Requirements', action: 'age_requirements', type: 'secondary' }
@@ -180,9 +180,9 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
   const handleQuickAction = async (action: string, label: string) => {
     // Fix P8 — External link actions (open in new tab)
     const externalLinks: { [key: string]: string } = {
-      'map_directions': 'https://maps.google.com/?q=Calinog+Iloilo+Philippines',
-      'contact_phone': 'tel:+63352253151',
-      'contact_email': 'mailto:support@motorent.com',
+      'map_directions': 'https://maps.google.com/?q=Dumaguete+City+Negros+Oriental+Philippines',
+      'contact_phone': 'tel:+63912343212',
+      'contact_email': 'mailto:support@dumagueteMotorAent.com',
     };
     if (externalLinks[action]) {
       window.open(externalLinks[action], '_blank', 'noopener,noreferrer');
@@ -193,15 +193,15 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
     const navigationActions: { [key: string]: string } = {
       'open_catalog': 'home',
       'book_bike': 'home',
-      'book_cheapest': 'home',
       'book_premium': 'home',
       // NOTE: browse_bikes intentionally NOT here — shows bikes in chat
-      'upload_docs': 'reservations',
+      'upload_docs': 'edit-profile',
       'download_receipt': 'transactions',
       'view_reservations': 'reservations',
       'view_profile': 'profile',
       'view_favorites': 'favorites',
       'help': 'help-support',
+      'select_cheapest_bike': 'reservations',
     };
     if (navigationActions[action] && onNavigate) {
       onNavigate(navigationActions[action]);
@@ -230,6 +230,7 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
       'see_more_options': 'Show me more motorcycle options',
       'more_options': 'Show me more motorcycle options',
       'how_to_book': 'Help me book a motorcycle',
+      'book_cheapest': 'I want to book the cheapest motorcycle',
     };
 
     const messageToSend = actionMessageMap[action] || label;
@@ -389,7 +390,7 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
     return (
       <div className="chat-widget-embedded">
         <div className="chat-header">
-          <h3>MotoRent Support</h3>
+          <h3>Dumaguete MotoRent Support</h3>
           {/* L2 — type=button prevents accidental form submit */}
           <button
             type="button"
@@ -458,7 +459,7 @@ export const ChatWidget = ({ userId, variant = 'floating', onNavigate }: ChatWid
       {isOpen && (
         <div className="chat-bubble-container">
           <div className="chat-header">
-            <h3>MotoRent Support</h3>
+            <h3>Dumaguete MotoRent Support</h3>
             <div className="header-buttons">
               {/* L2 — type=button on both floating header buttons */}
               <button

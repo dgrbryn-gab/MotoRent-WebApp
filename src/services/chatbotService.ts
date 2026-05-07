@@ -1,4 +1,11 @@
 import { supabase } from '../lib/supabase';
+import {
+  classifyIntentWithGemini,
+  generateGeminiResponse,
+  buildConversationContext,
+  isGeminiAvailable,
+  type GeminiIntentResponse,
+} from './geminiService';
 
 export interface ChatMessage {
   id?: string;
@@ -38,15 +45,15 @@ const conversationContexts = new Map<string, any>();
 // MOTOBOT PERSONA — Single source of truth for bot identity
 // ============================================================
 export const MOTOBOT_PERSONA = {
-  name: 'Moto',
-  role: 'MotoRent AI Assistant',
-  tone: 'friendly, helpful, and professional',
+  name: 'MotoRent Assistant',
+  role: 'Dumaguete MotoRent AI Assistant',
+  tone: 'professional, courteous, and concise',
   businessInfo: {
-    name: 'MotoRent',
-    location: 'Calinog, Iloilo, Philippines',
-    phone: '(035) 225-3151',
-    email: 'support@motorent.com',
-    hours: 'Monday–Sunday, 8:00 AM – 8:00 PM (Holidays: 9 AM – 6 PM)',
+    name: 'Dumaguete MotoRent',
+    location: 'Dumaguete City, Negros Oriental, Philippines',
+    phone: '091234323212',
+    email: 'support@dumagueteMotorAent.com',
+    hours: 'Monday–Sunday, 8:00 AM – 5:00 PM',
   },
   policies: {
     minAge: 18,
@@ -55,42 +62,40 @@ export const MOTOBOT_PERSONA = {
       halfRefund: '12–24 hours before pickup (50% refund)',
       noRefund: 'Less than 12 hours before pickup (no refund)',
     },
-    lateReturn: '₱200/hour (first 2 hrs), ₱500/hour thereafter',
-    fuelPolicy: 'Full-to-full — bikes delivered full, must return full',
-    insuranceIncluded: 'Basic accident coverage included; Premium upgrade +₱300/day',
+    lateReturn: 'Late return charges apply',
+    fuelPolicy: 'Fuel policy as per rental agreement',
+    insuranceIncluded: 'Damage liability as per policy',
     helmetsIncluded: true,
   },
   bookingRequirements: [
-    'Valid motorcycle driver\'s license',
-    'Government-issued ID (passport or national ID)',
+    'Valid government-issued ID',
+    'Driver\'s license (motorcycle license required for bikes above 125cc)',
     'Minimum age: 18 years old',
-    'At least 1 year of riding experience',
-    'Cash deposit required at pickup',
+    'Contact information',
   ],
   capabilities: [
     'Check your booking status',
-    'Show available motorcycles',
-    'Calculate rental costs instantly',
+    'Show available motorcycles and scooters',
+    'Calculate rental costs',
     'Check bike availability for specific dates',
     'Explain rental policies',
-    'Guide you step-by-step through booking',
-    'Check your document verification status',
-    'Show your payment history',
+    'Guide you through the booking process',
+    'Provide local travel advice',
     'Connect you with support',
   ],
   cannotDo: [
     'Create or modify bookings directly — use the Bookings page',
     'Process or issue refunds directly',
-    'Override any cancellation policy',
+    'Override rental policies',
     'Guarantee availability without a confirmed booking',
   ],
   greeting: {
-    new: `👋 Hey there! I\'m **Moto**, your MotoRent assistant! 🏍️\n\nHere\'s what I can help you with:\n\n🏍️ **Browse bikes** — fleet, pricing & availability\n📅 **Your bookings** — status, pickups & returns\n💰 **Rental quotes** — instant cost breakdown\n📋 **Requirements** — licenses, age rules & documents\n🛡️ **Policies** — fuel, insurance, cancellation & damage\n\nWhat can I help you with today?`,
+    new: `👋 Welcome to Dumaguete MotoRent! I'm your AI assistant here to help with bookings, vehicle availability, pricing, and general support.\n\nHow can I assist you today?\n\n• 🏍️ Browse available vehicles\n• 📅 Check booking status\n• 💰 Get rental quotes\n• ❓ Answer questions about our policies`,
     returning: (count: number) =>
-      `👋 Welcome back! You\'ve rented with us **${count} time${count !== 1 ? 's' : ''}** — thanks for choosing MotoRent! 🏍️\n\nWhat can I help you with today?`,
+      `👋 Welcome back! You've rented with us **${count} time${count !== 1 ? 's' : ''}** — thank you for choosing Dumaguete MotoRent!\n\nHow can I help you today?`,
   },
-  fallback: `I\'m not sure I understood that, but I\'m here to help! 😊\n\nHere\'s what I can assist with:\n\n🏍️ **Browse bikes** — "What motorcycles do you have?"\n💰 **Get a quote** — "How much for a Honda for 3 days?"\n📅 **Check availability** — "Is anything available March 25?"\n📋 **Your bookings** — "Show my reservation"\n❓ **Policies** — "What\'s your cancellation policy?"\n📞 **Human support** — "I need to speak to someone"\n\nOr just type your question — I\'ll do my best! 🤖`,
-  humanHandoff: `I\'ll connect you with our support team right away! 👨‍💼\n\n📱 **Call:** (035) 225-3151\n📧 **Email:** support@motorent.com\n⏰ **Hours:** Mon–Sun, 8 AM – 8 PM\n📍 **Visit:** MotoRent Shop, Calinog, Iloilo\n\n_Average call response: under 2 minutes_ ⚡`,
+  fallback: `I'm here to assist. You can ask me about:\n\n• 🏍️ **Vehicle availability** — "What motorcycles do you have?"\n• 💰 **Pricing** — "How much for a rental?"\n• 📅 **Booking status** — "Show my reservation"\n• ❓ **Policies** — "What are your rental requirements?"\n• 📞 **Support** — "I need to speak with someone"\n\nPlease feel free to ask any questions.`,
+  humanHandoff: `I understand your concern. Let me connect you with our team for immediate assistance.\n\n📱 **Call:** 091234323212\n⏰ **Hours:** Monday–Sunday, 8:00 AM – 5:00 PM\n📍 **Location:** Dumaguete City, Negros Oriental, Philippines\n\nOur team will be happy to help you.`,
 };
 
 // ============================================================
@@ -1641,13 +1646,43 @@ What would you like to know?`;
         case 'bike_pricing': {
           const priceData = await this.getPriceComparison();
           responseData = priceData;
-          responseText = this.formatPriceResponse(priceData);
-          quickActions = [
-            { label: 'Book Cheapest', action: 'book_cheapest', type: 'primary' },
-            { label: 'Book Premium', action: 'book_premium', type: 'secondary' },
-            { label: 'View All', action: 'browse_bikes', type: 'secondary' }
-          ];
-          this.setConversationContext(userId, { ...context, lastIntent: intent });
+          
+          // Check if user is specifically asking for the cheapest bike to book
+          const isBookingCheapest = sanitized.match(/book.*cheapest|cheapest.*book|want the cheapest/i);
+          
+          if (isBookingCheapest && priceData.cheapest) {
+            // Show only the cheapest bike with a selection button
+            const cheapest = priceData.cheapest;
+            responseText = `🏍️ **Here's the Cheapest Motorcycle Available**\n\n`;
+            responseText += `**${cheapest.name}**\n`;
+            responseText += `• Type: ${cheapest.type}\n`;
+            responseText += `• Engine: ${cheapest.engine_capacity}cc\n`;
+            responseText += `• Price: **₱${cheapest.price_per_day.toLocaleString()}/day** 💚\n`;
+            responseText += `• Rating: ${cheapest.rating}⭐\n\n`;
+            responseText += `Ready to rent this bike? Click the button below to proceed to booking!`;
+            
+            quickActions = [
+              { label: 'Select This Bike', action: 'select_cheapest_bike', type: 'primary' },
+              { label: 'See Other Options', action: 'browse_bikes', type: 'secondary' }
+            ];
+            
+            // Store the selected bike in context
+            this.setConversationContext(userId, { 
+              ...context, 
+              lastIntent: intent, 
+              selectedBike: cheapest,
+              cheapestBikeId: cheapest.id
+            });
+          } else {
+            // Show full price comparison
+            responseText = this.formatPriceResponse(priceData);
+            quickActions = [
+              { label: 'Book Cheapest', action: 'book_cheapest', type: 'primary' },
+              { label: 'Book Premium', action: 'book_premium', type: 'secondary' },
+              { label: 'View All', action: 'browse_bikes', type: 'secondary' }
+            ];
+            this.setConversationContext(userId, { ...context, lastIntent: intent });
+          }
           break;
         }
 
@@ -1818,7 +1853,7 @@ What would you like to know?`;
     } catch (error) {
       console.error('Error processing chat message:', error);
       return {
-        message: `😕 Something went wrong on my end. Please try again or contact us at **support@motorent.com** or **(035) 225-3151**.`,
+        message: `😕 Something went wrong on my end. Please try again or contact us at **support@dumagueteMotorAent.com** or **091234323212**.`,
         intent: 'unknown',
         quickActions: [
           { label: 'Contact Support', action: 'contact_support', type: 'primary' }
@@ -1960,29 +1995,76 @@ What would you like to know?`;
 
     return greeting;
   },
-    // chatbotService.ts — askAI (M5 + L3 applied)
-async askAI(message: string, context: any): Promise<string> {
-  try {
-    const { data, error } = await supabase.functions.invoke('gemini-chat', {
-      body: {
-        message,
-        conversationHistory: context.recentMessages || [],
-      },
-    });
+    // askAI — Now uses Google Gemini API with fallback to edge function
+    async askAI(message: string, context: any): Promise<string> {
+      try {
+        // Try Google Gemini first if available
+        if (isGeminiAvailable()) {
+          const geminiResponse = await generateGeminiResponse(
+            message,
+            'unknown',
+            {
+              userHistory: context.recentMessages?.slice(-3).join(' | ') || ''
+            }
+          );
+          if (geminiResponse && geminiResponse.text) {
+            return geminiResponse.text;
+          }
+        }
 
-    if (error) {
-      console.warn('[Moto AI] Edge Function error:', error);
-      return MOTOBOT_PERSONA.fallback;
+        // Fallback to Supabase edge function if Gemini is not configured
+        const { data, error } = await supabase.functions.invoke('gemini-chat', {
+          body: {
+            message,
+            conversationHistory: context.recentMessages || [],
+          },
+        });
+
+        if (error) {
+          console.warn('[Moto AI] Edge Function error:', error);
+          return MOTOBOT_PERSONA.fallback;
+        }
+
+        const text = (data as any)?.text;
+        return (text && String(text).trim()) ? String(text).trim() : MOTOBOT_PERSONA.fallback;
+
+      } catch (error) {
+        console.error('[Moto AI] askAI error:', error);
+        return MOTOBOT_PERSONA.fallback;
+      }
+    },
+
+    // Enhanced intent classification using Gemini AI
+    async classifyIntentWithAI(message: string): Promise<{ intent: Intent; confidence: number }> {
+      if (!isGeminiAvailable()) {
+        // Fallback to keyword-based classification
+        return {
+          intent: this.classifyIntent(message),
+          confidence: 0.7
+        };
+      }
+
+      try {
+        const geminiResult = await classifyIntentWithGemini(message);
+        
+        // Convert Gemini intent to our Intent type
+        const mappedIntent = geminiResult.intent as Intent;
+        
+        // Log for debugging
+        console.debug(`[Gemini] Intent classification: "${message}" → "${mappedIntent}" (${geminiResult.confidence}%)`);
+        
+        return {
+          intent: mappedIntent,
+          confidence: geminiResult.confidence / 100 // Convert to 0-1 scale
+        };
+      } catch (error) {
+        console.warn('[Gemini] Intent classification failed, falling back to keyword matching:', error);
+        return {
+          intent: this.classifyIntent(message),
+          confidence: 0.7
+        };
+      }
     }
-
-    const text = (data as any)?.text;
-    return (text && String(text).trim()) ? String(text).trim() : MOTOBOT_PERSONA.fallback;
-
-  } catch (error) {
-    console.error('[Moto AI] askAI error:', error);
-    return MOTOBOT_PERSONA.fallback;
-  }
-}
 
 
 };

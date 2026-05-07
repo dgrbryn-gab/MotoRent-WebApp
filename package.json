@@ -3,6 +3,7 @@
       "version": "0.1.0",
       "private": true,
       "dependencies": {
+            "@google/generative-ai": "^0.24.1",
             "@radix-ui/react-accordion": "^1.2.3",
             "@radix-ui/react-alert-dialog": "^1.1.6",
             "@radix-ui/react-aspect-ratio": "^1.1.2",
@@ -35,6 +36,7 @@
             "clsx": "*",
             "cmdk": "^1.1.1",
             "date-fns": "*",
+            "dotenv": "^17.4.2",
             "embla-carousel-react": "^8.6.0",
             "input-otp": "^1.4.2",
             "lucide-react": "^0.487.0",
