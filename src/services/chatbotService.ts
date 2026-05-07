@@ -1961,10 +1961,13 @@ What would you like to know?`;
     return greeting;
   },
     // chatbotService.ts — askAI (M5 + L3 applied)
-  async askAI(message: string, _context: any): Promise<string> {
+async askAI(message: string, context: any): Promise<string> {
   try {
     const { data, error } = await supabase.functions.invoke('gemini-chat', {
-      body: { message },
+      body: {
+        message,
+        conversationHistory: context.recentMessages || [],
+      },
     });
 
     if (error) {
